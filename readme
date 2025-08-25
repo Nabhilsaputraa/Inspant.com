@@ -1,0 +1,275 @@
+# Sistem Login Inspant
+
+Sistem autentikasi aman dengan role-based access control untuk platform Inspant yang mendukung tiga jenis pengguna: Admin, Coach, dan Atlet.
+
+## 🚀 Fitur Utama
+
+- **Multi-Role Authentication**: Admin, Coach, dan Atlet
+- **Keamanan Tinggi**: 
+  - Password hashing dengan bcrypt
+  - Session management dengan database
+  - Rate limiting untuk mencegah brute force
+  - CSRF protection
+  - Input validation dan sanitization
+- **Modern UI**: Glassmorphism design dengan animasi smooth
+- **Responsive Design**: Kompatibel dengan desktop dan mobile
+- **Real-time Validation**: Password strength checker dan form validation
+- **Dashboard Role-Based**: Dashboard yang berbeda sesuai role pengguna
+
+## 📋 Persyaratan Sistem
+
+- PHP 7.4 atau lebih tinggi
+- MySQL 5.7 atau MariaDB 10.3
+- Apache dengan mod_rewrite enabled
+- Extension PHP yang diperlukan:
+  - PDO MySQL
+  - OpenSSL
+  - JSON
+  - Session
+
+## 🔧 Instalasi
+
+### 1. Setup Database
+
+```sql
+-- Buat database baru
+CREATE DATABASE inspant_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+
+-- Import schema database
+-- Jalankan file database schema yang disediakan
+```
+
+### 2. Konfigurasi File
+
+**a. Edit `config.php`:**
+```php
+// Sesuaikan konfigurasi database
+define('DB_HOST', 'localhost');
+define('DB_NAME', 'inspant_db');
+define('DB_USER', 'your_username');
+define('DB_PASS', 'your_password');
+
+// Ganti JWT secret key
+define('JWT_SECRET', 'your_secure_random_key_here');
+```
+
+**b. Setup `.htaccess`:**
+- Copy file `.htaccess` ke root directory
+- Sesuaikan domain pada bagian hotlinking protection
+
+### 3. Struktur File
+
+Pastikan struktur file sesuai dengan yang sudah ada:
+
+```
+inspant/
+├── api/
+│   └── auth/
+│       ├── login.php
+│       ├── register.php
+│       ├── logout.php
+│       └── check.php
+├── assets/
+│   ├── img/
+│   ├── js/
+│   └── styles/
+├── pages/
+│   ├── admin/
+│   ├── coach/
+│   └── atlet/
+├── config.php
+├── auth_functions.php
+├── auth_middleware.php
+├── login.html
+├── register.html
+├── dashboard.html
+└── .htaccess
+```
+
+### 4. Set Permissions
+
+```bash
+# Set permission untuk direktori upload (jika ada)
+chmod 755 assets/uploads/
+
+# Set permission untuk file konfigurasi
+chmod 644 config.php
+chmod 644 auth_functions.php
+chmod 644 auth_middleware.php
+```
+
+## 👥 Akun Default
+
+Setelah instalasi, gunakan akun default berikut:
+
+### Admin
+- **Username**: `admin`
+- **Password**: `admin123`
+
+### Coach (Contoh)
+- **Username**: `coach_john`
+- **Password**: `admin123`
+
+### Atlet (Contoh)
+- **Username**: `athlete_jane`
+- **Password**: `admin123`
+
+> ⚠️ **Penting**: Segera ganti password default setelah instalasi!
+
+## 🔒 Keamanan
+
+### Password Policy
+- Minimal 6 karakter
+- Kombinasi huruf besar, kecil, angka, dan simbol untuk keamanan optimal
+- Password di-hash menggunakan bcrypt dengan cost 12
+
+### Session Management
+- Session disimpan di database dengan expiry time
+- Auto cleanup session yang expired
+- Session token menggunakan cryptographically secure random generator
+
+### Rate Limiting
+- Maksimal 5 percobaan login gagal per IP/username
+- Lockout selama 15 menit setelah mencapai batas
+- Cleanup otomatis untuk data lama
+
+## 📱 Penggunaan
+
+### Registrasi
+1. Kunjungi `/register.html`
+2. Pilih role (Coach atau Atlet)
+3. Isi form dengan data yang valid
+4. Password akan dicek kekuatannya secara real-time
+5. Setelah registrasi berhasil, redirect ke halaman login
+
+### Login
+1. Kunjungi `/login.html`
+2. Masukkan username/email dan password
+3. Centang "Ingat saya" untuk session yang lebih lama
+4. Setelah login berhasil, redirect ke dashboard sesuai role
+
+### Dashboard
+- **Admin**: Kelola pengguna, lihat laporan sistem
+- **Coach**: Kelola atlet, jadwal latihan, analisis progress
+- **Atlet**: Lihat jadwal, progress, pencapaian
+
+## 🛡️ Proteksi Halaman
+
+### Untuk File PHP
+```php
+<?php
+require_once 'auth_middleware.php';
+
+// Proteksi halaman - hanya user yang login
+requireLogin();
+
+// Proteksi dengan role tertentu
+requireLogin('admin'); // Hanya admin
+requireLogin('coach'); // Hanya coach
+requireLogin('atlet'); // Hanya atlet
+?>
+```
+
+### Untuk API Endpoint
+```php
+<?php
+require_once '../../auth_middleware.php';
+
+// Proteksi API
+requireAPI(); // Semua user yang login
+requireAPI('admin'); // Hanya admin
+?>
+```
+
+## 🔧 Kustomisasi
+
+### Menambah Role Baru
+1. Update enum `role` di tabel `users`
+2. Buat tabel profile khusus jika diperlukan
+3. Update validasi di `auth_functions.php`
+4. Tambahkan navigation dan dashboard content
+
+### Mengubah Redirect URL
+Edit function `getRedirectUrl()` di `auth_functions.php`:
+```php
+private function getRedirectUrl($role) {
+    switch ($role) {
+        case 'new_role':
+            return '/pages/new_role/dashboard.html';
+        // ... existing cases
+    }
+}
+```
+
+## 🐛 Troubleshooting
+
+### Error "Database connection failed"
+- Cek konfigurasi database di `config.php`
+- Pastikan MySQL service berjalan
+- Verify username/password database
+
+### Error "Session expired"
+- Cek konfigurasi session di `config.php`
+- Pastikan tabel `user_sessions` ada dan bisa diakses
+- Clear browser cookies
+
+### Form tidak bisa submit
+- Cek console browser untuk error JavaScript
+- Pastikan API endpoint dapat diakses
+- Verify CSRF token jika diaktifkan
+
+### 404 Error pada API
+- Pastikan mod_rewrite Apache enabled
+- Check file `.htaccess` sudah ter-upload
+- Verify path API sudah benar
+
+## 📊 Monitoring
+
+### Log Files
+- Error PHP: Check error log Apache/PHP
+- Login attempts: Tabel `login_attempts` di database
+- User activities: Tabel `user_activities` di database
+
+### Performance
+- Monitor query database yang lambat
+- Check size tabel session dan cleanup berkala
+- Optimize image dan static assets
+
+## 🔄 Maintenance
+
+### Cleanup Berkala
+```sql
+-- Hapus session expired (otomatis via cron atau manual)
+DELETE FROM user_sessions WHERE expires_at < NOW();
+
+-- Hapus login attempts lama
+DELETE FROM login_attempts WHERE attempted_at < DATE_SUB(NOW(), INTERVAL 24 HOUR);
+
+-- Hapus password reset token expired
+DELETE FROM password_resets WHERE expires_at < NOW();
+```
+
+### Backup Database
+```bash
+# Backup database
+mysqldump -u username -p inspant_db > backup_$(date +%Y%m%d).sql
+
+# Restore database
+mysql -u username -p inspant_db < backup_file.sql
+```
+
+## 📞 Support
+
+Jika mengalami masalah atau butuh bantuan:
+1. Check dokumentasi di atas
+2. Review error log
+3. Verify konfigurasi database dan file permissions
+4. Pastikan semua dependencies terpenuhi
+
+## 📄 License
+
+Sistem ini dibuat untuk keperluan internal platform Inspant. Silakan sesuaikan dengan kebutuhan proyek Anda.
+
+---
+
+**Selamat menggunakan sistem login Inspant! 🚀**

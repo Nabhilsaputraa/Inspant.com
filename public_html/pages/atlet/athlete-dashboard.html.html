@@ -1,0 +1,3302 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CoachPro Athlete - Mardy Collins | Professional Basketball Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <style>
+        /* Base Styles - Basketball Theme */
+        :root {
+            --primary-color: #2d5a27;
+            --secondary-color: #e53e3e;
+            --accent-blue: #4facfe;
+            --accent-cyan: #00f2fe;
+            --dark-text: #1a202c;
+            --medium-text: #4a5568;
+            --light-text: #718096;
+            --bg-primary: #000000;
+            --bg-secondary: #1a1a1a;
+            --bg-tertiary: #2a2a2a;
+            --bg-card: #1a1a1a;
+            --text-primary: #ffffff;
+            --text-secondary: #cbd5e1;
+            --text-muted: #64748b;
+            --border-color: #334155;
+            --sidebar-bg: #1a1a1a;
+            --sidebar-active: #2d5a27;
+            --shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+            --shadow-lg: 0 20px 25px rgba(0, 0, 0, 0.4);
+            --gradient-primary: linear-gradient(135deg, #2d5a27 0%, #1e4a1e 100%);
+            --gradient-athlete: linear-gradient(135deg, #e53e3e 0%, #c53030 100%);
+            --gradient-performance: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            --gradient-success: linear-gradient(135deg, #48bb78 0%, #38a169 100%);
+            --gradient-warning: linear-gradient(135deg, #ed8936 0%, #dd6b20 100%);
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            overflow-x: hidden;
+            line-height: 1.6;
+        }
+
+        .app-container {
+            display: flex;
+            min-height: 100vh;
+        }
+
+        /* Mobile Menu Toggle */
+        .mobile-menu-toggle {
+            display: none;
+            position: fixed;
+            top: 1rem;
+            left: 1rem;
+            z-index: 1001;
+            width: 44px;
+            height: 44px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: var(--text-primary);
+        }
+
+        .mobile-menu-toggle:hover {
+            background: var(--bg-tertiary);
+        }
+
+        /* Enhanced Basketball Sidebar */
+        .sidebar {
+            width: 280px;
+            background: var(--sidebar-bg);
+            border-right: 1px solid var(--border-color);
+            display: flex;
+            flex-direction: column;
+            position: fixed;
+            height: 100vh;
+            z-index: 100;
+            box-shadow: var(--shadow-lg);
+            transition: transform 0.3s ease;
+        }
+
+        .sidebar-header {
+            padding: 2rem 1.5rem 1.5rem;
+            border-bottom: 1px solid var(--border-color);
+            background: linear-gradient(135deg, #1a1a1a 0%, #2a2a2a 100%);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 1.5rem;
+        }
+
+        .logo-icon {
+            width: 44px;
+            height: 44px;
+            background: var(--gradient-athlete);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 22px;
+            animation: logoGlow 3s ease-in-out infinite alternate;
+            box-shadow: 0 4px 15px rgba(229, 62, 62, 0.3);
+        }
+
+        @keyframes logoGlow {
+            from { box-shadow: 0 4px 15px rgba(229, 62, 62, 0.3); }
+            to { box-shadow: 0 8px 25px rgba(229, 62, 62, 0.5); }
+        }
+
+        .logo-text {
+            font-size: 22px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -0.5px;
+        }
+
+        .logo-subtitle {
+            font-size: 12px;
+            color: var(--text-muted);
+            margin-top: -4px;
+        }
+
+        /* Player Profile Card in Sidebar */
+        .player-info-card {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            padding: 1rem;
+            background: rgba(229, 62, 62, 0.1);
+            border: 1px solid rgba(229, 62, 62, 0.2);
+            border-radius: 12px;
+            backdrop-filter: blur(10px);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .player-info-card:hover {
+            background: rgba(229, 62, 62, 0.15);
+        }
+
+        .player-avatar {
+            width: 50px;
+            height: 50px;
+            background: var(--gradient-athlete);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 18px;
+            box-shadow: 0 4px 10px rgba(229, 62, 62, 0.3);
+            position: relative;
+        }
+
+        .player-number-badge {
+            position: absolute;
+            top: -8px;
+            right: -8px;
+            background: var(--primary-color);
+            color: white;
+            width: 24px;
+            height: 24px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 700;
+        }
+
+        .player-details h4 {
+            font-size: 16px;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 2px;
+        }
+
+        .player-position {
+            font-size: 12px;
+            color: var(--text-muted);
+        }
+
+        .player-team {
+            font-size: 11px;
+            color: var(--secondary-color);
+            font-weight: 600;
+        }
+
+        .sidebar-nav {
+            flex: 1;
+            padding: 1.5rem 0;
+            overflow-y: auto;
+        }
+
+        .nav-section {
+            margin-bottom: 2rem;
+        }
+
+        .nav-section-title {
+            font-size: 11px;
+            font-weight: 700;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1.5px;
+            margin-bottom: 1rem;
+            padding: 0 1.5rem;
+        }
+
+        .nav-item {
+            margin-bottom: 2px;
+        }
+
+        .nav-link {
+            display: flex;
+            align-items: center;
+            padding: 14px 1.5rem;
+            text-decoration: none;
+            color: var(--text-secondary);
+            border-radius: 0 25px 25px 0;
+            margin-right: 1rem;
+            transition: all 0.3s ease;
+            gap: 14px;
+            font-weight: 500;
+            font-size: 14px;
+            position: relative;
+            cursor: pointer;
+        }
+
+        .nav-link:hover {
+            background: rgba(229, 62, 62, 0.1);
+            color: var(--text-primary);
+            transform: translateX(5px);
+        }
+
+        .nav-link.active {
+            background: var(--gradient-athlete);
+            color: white;
+            box-shadow: 0 4px 15px rgba(229, 62, 62, 0.4);
+        }
+
+        .nav-icon {
+            font-size: 16px;
+            width: 20px;
+            text-align: center;
+        }
+
+        .nav-badge {
+            background: var(--secondary-color);
+            color: white;
+            font-size: 10px;
+            padding: 2px 6px;
+            border-radius: 10px;
+            margin-left: auto;
+            font-weight: 600;
+        }
+
+        /* Enhanced Main Content */
+        .main-content {
+            flex: 1;
+            margin-left: 280px;
+            background: var(--bg-primary);
+            min-height: 100vh;
+            transition: margin-left 0.3s ease;
+        }
+
+        .top-bar {
+            background: var(--bg-secondary);
+            border-bottom: 1px solid var(--border-color);
+            padding: 1.5rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 50;
+            backdrop-filter: blur(10px);
+            box-shadow: var(--shadow);
+        }
+
+        .page-title h1 {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+            letter-spacing: -0.5px;
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .top-bar-actions {
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+        }
+
+        .search-box {
+            position: relative;
+        }
+
+        .search-input {
+            width: 350px;
+            padding: 12px 16px 12px 45px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .search-input:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.1);
+            background: var(--bg-tertiary);
+        }
+
+        .search-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--text-muted);
+            font-size: 16px;
+        }
+
+        .btn {
+            padding: 12px 20px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 600;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            letter-spacing: 0.3px;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s ease;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn-primary {
+            background: var(--gradient-athlete);
+            color: white;
+            box-shadow: 0 4px 15px rgba(229, 62, 62, 0.3);
+        }
+
+        .btn-primary:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(229, 62, 62, 0.4);
+        }
+
+        .btn-outline {
+            background: transparent;
+            color: var(--accent-blue);
+            border: 1px solid var(--accent-blue);
+        }
+
+        .btn-outline:hover {
+            background: var(--accent-blue);
+            color: white;
+        }
+
+        .notification-btn {
+            position: relative;
+            width: 44px;
+            height: 44px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: var(--text-primary);
+        }
+
+        .notification-btn:hover {
+            background: var(--bg-tertiary);
+            transform: translateY(-2px);
+        }
+
+        .notification-dot {
+            position: absolute;
+            top: 8px;
+            right: 8px;
+            width: 8px;
+            height: 8px;
+            background: var(--secondary-color);
+            border-radius: 50%;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); opacity: 1; }
+            50% { transform: scale(1.2); opacity: 0.7; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        /* Enhanced Dashboard Content */
+        .dashboard-content {
+            padding: 2rem;
+        }
+
+        /* Basketball Stats Cards */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin-bottom: 2rem;
+        }
+
+        .stat-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            position: relative;
+            transition: all 0.3s ease;
+            overflow: hidden;
+        }
+
+        .stat-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 4px;
+            background: var(--gradient-athlete);
+        }
+
+        .stat-card:hover {
+            transform: translateY(-5px);
+            box-shadow: var(--shadow-lg);
+            border-color: var(--secondary-color);
+        }
+
+        .stat-header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 1rem;
+        }
+
+        .stat-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .stat-info h3 {
+            font-size: 13px;
+            color: var(--text-muted);
+            margin-bottom: 8px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            font-weight: 600;
+        }
+
+        .stat-value {
+            font-size: 28px;
+            font-weight: 700;
+            color: var(--text-primary);
+            letter-spacing: -1px;
+        }
+
+        .stat-change {
+            position: absolute;
+            top: 1.5rem;
+            right: 1.5rem;
+            font-size: 12px;
+            font-weight: 600;
+            padding: 4px 8px;
+            border-radius: 8px;
+        }
+
+        .change-positive { 
+            background: rgba(72, 187, 120, 0.2); 
+            color: #48bb78; 
+        }
+        
+        .change-negative { 
+            background: rgba(229, 62, 62, 0.2); 
+            color: var(--secondary-color); 
+        }
+
+        /* Content Grid */
+        .content-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 2rem;
+            margin-bottom: 2rem;
+        }
+
+        .card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 16px;
+            padding: 1.5rem;
+            transition: all 0.3s ease;
+        }
+
+        .card:hover {
+            box-shadow: var(--shadow-lg);
+            border-color: var(--secondary-color);
+        }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1.5rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .card-title {
+            font-size: 18px;
+            font-weight: 600;
+            color: var(--text-primary);
+            letter-spacing: -0.3px;
+        }
+
+        /* Player Profile Hero Section */
+        .player-hero {
+            display: grid;
+            grid-template-columns: 1fr 2fr;
+            gap: 3rem;
+            margin-bottom: 3rem;
+            align-items: center;
+        }
+
+        .player-image-container {
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .player-card {
+            width: 100%;
+            max-width: 300px;
+            background: var(--bg-card);
+            border-radius: 1rem;
+            overflow: hidden;
+            box-shadow: var(--shadow-lg);
+            position: relative;
+            transition: all 0.4s ease;
+            cursor: pointer;
+            border: 1px solid var(--border-color);
+        }
+
+        .player-card:hover {
+            transform: translateY(-10px) rotateY(5deg);
+            box-shadow: 0 20px 40px rgba(229, 62, 62, 0.3);
+        }
+
+        .player-photo {
+            width: 100%;
+            height: 400px;
+            object-fit: cover;
+            object-position: top center;
+            display: block;
+            transition: all 0.4s ease;
+        }
+
+        .player-card:hover .player-photo {
+            transform: scale(1.05);
+        }
+
+        .player-jersey-overlay {
+            font-size: 4rem;
+            font-weight: 900;
+            color: rgba(229, 62, 62, 0.3);
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 1;
+            transition: all 0.4s ease;
+            text-shadow: 0 0 20px rgba(229, 62, 62, 0.5);
+        }
+
+        .player-card:hover .player-jersey-overlay {
+            transform: translate(-50%, -50%) scale(1.1);
+            color: rgba(229, 62, 62, 0.5);
+        }
+
+        .player-overlay-info {
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background: linear-gradient(to top, rgba(0,0,0,0.9), transparent);
+            padding: 1.5rem 1rem;
+            color: white;
+            transition: all 0.3s ease;
+        }
+
+        .player-team-name {
+            font-size: 1.1rem;
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+            color: var(--secondary-color);
+        }
+
+        .player-main-info {
+            text-align: left;
+            padding: 2rem 0;
+        }
+
+        .player-number-large {
+            font-size: 6rem;
+            font-weight: 900;
+            color: var(--secondary-color);
+            line-height: 0.8;
+            margin-bottom: 0.5rem;
+            animation: numberGlow 3s ease-in-out infinite;
+            text-shadow: 0 0 20px rgba(229, 62, 62, 0.3);
+        }
+
+        @keyframes numberGlow {
+            0%, 100% {
+                text-shadow: 0 0 20px rgba(229, 62, 62, 0.3);
+            }
+            50% {
+                text-shadow: 0 0 30px rgba(229, 62, 62, 0.6), 0 0 40px rgba(229, 62, 62, 0.4);
+            }
+        }
+
+        .player-name-large {
+            font-size: 3rem;
+            font-weight: 700;
+            color: var(--text-primary);
+            line-height: 1.1;
+            margin-bottom: 0.75rem;
+        }
+
+        .player-position-large {
+            color: var(--text-secondary);
+            font-size: 1.2rem;
+            margin-bottom: 1rem;
+            font-weight: 500;
+        }
+
+        .player-bio {
+            color: var(--text-muted);
+            margin-bottom: 1.5rem;
+            line-height: 1.6;
+            max-width: 600px;
+        }
+
+        .player-quick-stats {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .quick-stat {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            padding: 0.75rem;
+            background: var(--bg-card);
+            border-radius: 0.5rem;
+            transition: all 0.3s ease;
+            border: 1px solid var(--border-color);
+        }
+
+        .quick-stat:hover {
+            transform: translateY(-3px) scale(1.02);
+            background: var(--bg-tertiary);
+            border-color: var(--secondary-color);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .quick-stat-icon {
+            width: 1.8rem;
+            height: 1.8rem;
+            background: var(--bg-tertiary);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--accent-blue);
+            font-size: 0.8rem;
+            transition: all 0.3s ease;
+        }
+
+        .quick-stat:hover .quick-stat-icon {
+            background: var(--accent-blue);
+            color: white;
+            transform: rotate(10deg) scale(1.1);
+        }
+
+        .quick-stat-info {
+            flex: 1;
+        }
+
+        .quick-stat-label {
+            font-size: 0.7rem;
+            color: var(--text-muted);
+        }
+
+        .quick-stat-value {
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        .action-buttons {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-start;
+            flex-wrap: wrap;
+            margin-bottom: 1.5rem;
+        }
+
+        .social-links {
+            display: flex;
+            gap: 0.75rem;
+            justify-content: flex-start;
+            margin-top: 1.5rem;
+        }
+
+        .social-link {
+            width: 2.2rem;
+            height: 2.2rem;
+            border-radius: 50%;
+            background: rgba(229, 62, 62, 0.2);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: var(--secondary-color);
+            transition: all 0.3s ease;
+            font-size: 0.9rem;
+            text-decoration: none;
+        }
+
+        .social-link:hover {
+            background: var(--secondary-color);
+            color: white;
+            transform: translateY(-2px);
+        }
+
+        /* Performance Metrics */
+        .performance-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 1.5rem;
+            margin-top: 2rem;
+        }
+
+        .metric-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+            transition: all 0.3s ease;
+        }
+
+        .metric-card:hover {
+            transform: translateY(-5px);
+            border-color: var(--secondary-color);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .metric-value {
+            font-size: 32px;
+            font-weight: 700;
+            color: var(--text-primary);
+            margin-bottom: 0.5rem;
+        }
+
+        .metric-label {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .metric-change {
+            font-size: 14px;
+            margin-top: 0.5rem;
+        }
+
+        .metric-improved { color: #48bb78; }
+        .metric-declined { color: var(--secondary-color); }
+        .metric-stable { color: var(--text-muted); }
+
+        /* Recent Activities */
+        .recent-activities {
+            margin-top: 2rem;
+        }
+
+        .activity-item {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg-card);
+            border-radius: 12px;
+            margin-bottom: 1rem;
+            border: 1px solid var(--border-color);
+            transition: all 0.3s ease;
+        }
+
+        .activity-item:hover {
+            border-color: var(--secondary-color);
+            transform: translateX(5px);
+        }
+
+        .activity-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+        }
+
+        .activity-info {
+            flex: 1;
+        }
+
+        .activity-title {
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 4px;
+        }
+
+        .activity-description {
+            font-size: 14px;
+            color: var(--text-muted);
+        }
+
+        .activity-time {
+            font-size: 12px;
+            color: var(--text-muted);
+            text-align: right;
+        }
+
+        /* Modal Styles */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(10px);
+            animation: fadeIn 0.3s ease;
+        }
+
+        .modal-content {
+            background: var(--bg-secondary);
+            margin: 3% auto;
+            padding: 2rem;
+            border-radius: 16px;
+            width: 90%;
+            max-width: 600px;
+            border: 1px solid var(--border-color);
+            animation: modalSlideIn 0.3s ease;
+            box-shadow: var(--shadow-lg);
+        }
+
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-50px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .form-group {
+            margin-bottom: 1.5rem;
+        }
+
+        .form-label {
+            display: block;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+            font-weight: 600;
+            font-size: 14px;
+        }
+
+        .form-input, .form-select, .form-textarea {
+            width: 100%;
+            padding: 12px 16px;
+            background: var(--bg-card);
+            border: 1px solid var(--border-color);
+            border-radius: 10px;
+            color: var(--text-primary);
+            font-size: 14px;
+            transition: all 0.3s ease;
+        }
+
+        .form-input:focus, .form-select:focus, .form-textarea:focus {
+            outline: none;
+            border-color: var(--secondary-color);
+            box-shadow: 0 0 0 3px rgba(229, 62, 62, 0.1);
+        }
+
+        /* Page Content Management */
+        .page-content {
+            display: none;
+            animation: fadeInUp 0.3s ease;
+        }
+
+        .page-content.active {
+            display: block;
+        }
+
+        @keyframes fadeInUp {
+            from {
+                opacity: 0;
+                transform: translateY(20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 1024px) {
+            .mobile-menu-toggle {
+                display: flex;
+            }
+            
+            .sidebar {
+                transform: translateX(-100%);
+            }
+            
+            .sidebar.active {
+                transform: translateX(0);
+            }
+            
+            .main-content {
+                margin-left: 0;
+            }
+            
+            .content-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .player-hero {
+                grid-template-columns: 1fr;
+                text-align: center;
+            }
+            
+            .player-main-info {
+                text-align: center;
+            }
+            
+            .action-buttons {
+                justify-content: center;
+            }
+            
+            .social-links {
+                justify-content: center;
+            }
+        }
+
+        @media (max-width: 768px) {
+            .search-input {
+                width: 200px;
+            }
+            
+            .top-bar {
+                padding: 1rem;
+            }
+            
+            .dashboard-content {
+                padding: 1rem;
+            }
+            
+            .player-quick-stats {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .player-number-large {
+                font-size: 4rem;
+            }
+            
+            .player-name-large {
+                font-size: 2rem;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .player-quick-stats {
+                grid-template-columns: 1fr;
+            }
+        }
+
+        /* Additional Animation Styles */
+        @keyframes slideInRight {
+            from {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+            to {
+                transform: translateX(0);
+                opacity: 1;
+            }
+        }
+
+        @keyframes slideOutRight {
+            from {
+                transform: translateX(0);
+                opacity: 1;
+            }
+            to {
+                transform: translateX(100%);
+                opacity: 0;
+            }
+        }
+
+        .fa-spinner {
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <!-- Mobile Menu Toggle -->
+    <div class="mobile-menu-toggle" onclick="toggleSidebar()">
+        <i class="fas fa-bars"></i>
+    </div>
+
+    <div class="app-container">
+        <!-- Enhanced Basketball Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <div class="logo-icon">🏀</div>
+                    <div>
+                        <div class="logo-text">CoachPro</div>
+                        <div class="logo-subtitle">Athlete Dashboard</div>
+                    </div>
+                </div>
+                <div class="player-info-card" onclick="navigateToPage('profile')">
+                    <div class="player-avatar" id="sidebarPlayerAvatar">
+                        MC
+                        <div class="player-number-badge">01</div>
+                    </div>
+                    <div class="player-details">
+                        <h4 id="sidebarPlayerName">Mardy Collins</h4>
+                        <div class="player-position">Shooting Guard</div>
+                        <div class="player-team">Lokomotiv Kuban</div>
+                    </div>
+                </div>
+            </div>
+            
+            <nav class="sidebar-nav">
+                <div class="nav-section">
+                    <div class="nav-section-title">Performance</div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link active" data-page="overview">
+                            <span class="nav-icon"><i class="fas fa-chart-line"></i></span>
+                            Performance Dashboard
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="training-schedule">
+                            <span class="nav-icon"><i class="fas fa-calendar-alt"></i></span>
+                            Training Schedule
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="game-stats">
+                            <span class="nav-icon"><i class="fas fa-basketball-ball"></i></span>
+                            Game Statistics
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="goals">
+                            <span class="nav-icon"><i class="fas fa-bullseye"></i></span>
+                            Goals & Targets
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">Health & Fitness</div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="workouts">
+                            <span class="nav-icon"><i class="fas fa-dumbbell"></i></span>
+                            Workout Log
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="nutrition">
+                            <span class="nav-icon"><i class="fas fa-apple-alt"></i></span>
+                            Nutrition Tracking
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="recovery">
+                            <span class="nav-icon"><i class="fas fa-bed"></i></span>
+                            Recovery & Sleep
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="medical">
+                            <span class="nav-icon"><i class="fas fa-heart"></i></span>
+                            Medical Reports
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">Team</div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="team-chat">
+                            <span class="nav-icon"><i class="fas fa-comments"></i></span>
+                            Team Chat
+                            <span class="nav-badge" id="chatBadge">3</span>
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="teammates">
+                            <span class="nav-icon"><i class="fas fa-users"></i></span>
+                            Teammates
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="coach-feedback">
+                            <span class="nav-icon"><i class="fas fa-clipboard-check"></i></span>
+                            Coach Feedback
+                        </a>
+                    </div>
+                </div>
+                
+                <div class="nav-section">
+                    <div class="nav-section-title">Personal</div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="profile">
+                            <span class="nav-icon"><i class="fas fa-user"></i></span>
+                            My Profile
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="achievements">
+                            <span class="nav-icon"><i class="fas fa-trophy"></i></span>
+                            Achievements
+                        </a>
+                    </div>
+                    <div class="nav-item">
+                        <a href="#" class="nav-link" data-page="settings">
+                            <span class="nav-icon"><i class="fas fa-cog"></i></span>
+                            Settings
+                        </a>
+                    </div>
+                </div>
+            </nav>
+        </aside>
+
+        <!-- Enhanced Main Content -->
+        <main class="main-content" id="mainContent">
+            <div class="top-bar">
+                <div class="page-title">
+                    <div>
+                        <h1 id="pageTitle">Performance Dashboard</h1>
+                        <p class="page-subtitle" id="pageSubtitle">Track your basketball performance and training progress</p>
+                    </div>
+                </div>
+                
+                <div class="top-bar-actions">
+                    <div class="search-box">
+                        <span class="search-icon"><i class="fas fa-search"></i></span>
+                        <input type="text" class="search-input" id="globalSearch" placeholder="Search games, workouts, stats...">
+                    </div>
+                    <div class="notification-btn" onclick="showNotifications()">
+                        <i class="fas fa-bell"></i>
+                        <div class="notification-dot" id="notificationDot"></div>
+                    </div>
+                    <button class="btn btn-primary" onclick="openActivityModal()">
+                        <i class="fas fa-plus"></i>
+                        Log Activity
+                    </button>
+                </div>
+            </div>
+
+            <!-- Performance Overview Page -->
+            <div id="overview-page" class="page-content active">
+                <div class="dashboard-content">
+                    <!-- Player Hero Section -->
+                    <div class="player-hero">
+                        <div class="player-image-container">
+                            <div class="player-card" onclick="openPlayerGallery()">
+                                <div class="player-jersey-overlay">01</div>
+                                <img src="https://via.placeholder.com/300x400/2d5a27/ffffff?text=Mardy+Collins" alt="Mardy Collins" class="player-photo">
+                                
+                                <div class="player-overlay-info">
+                                    <div class="player-team-name">Lokomotiv Kuban</div>
+                                </div>
+                            </div>
+                        </div>
+                    
+                        <div class="player-main-info">
+                            <div class="player-number-large">01</div>
+                            <h1 class="player-name-large">Mardy Collins</h1>
+                            <div class="player-position-large">Shooting Guard / Defender</div>
+                            
+                            <p class="player-bio">
+                                Professional basketball player with extensive experience in European leagues. 
+                                Known for defensive skills, leadership on court, and clutch performances.
+                                Multiple championship winner with a career spanning over 13 years.
+                            </p>
+                            
+                            <div class="player-quick-stats">
+                                <div class="quick-stat">
+                                    <div class="quick-stat-icon">
+                                        <i class="fas fa-ruler-vertical"></i>
+                                    </div>
+                                    <div class="quick-stat-info">
+                                        <div class="quick-stat-label">Height</div>
+                                        <div class="quick-stat-value">202 cm</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="quick-stat">
+                                    <div class="quick-stat-icon">
+                                        <i class="fas fa-weight"></i>
+                                    </div>
+                                    <div class="quick-stat-info">
+                                        <div class="quick-stat-label">Weight</div>
+                                        <div class="quick-stat-value">110 kg</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="quick-stat">
+                                    <div class="quick-stat-icon">
+                                        <i class="fas fa-birthday-cake"></i>
+                                    </div>
+                                    <div class="quick-stat-info">
+                                        <div class="quick-stat-label">Age</div>
+                                        <div class="quick-stat-value">39 years</div>
+                                    </div>
+                                </div>
+                                
+                                <div class="quick-stat">
+                                    <div class="quick-stat-icon">
+                                        <i class="fas fa-calendar-alt"></i>
+                                    </div>
+                                    <div class="quick-stat-info">
+                                        <div class="quick-stat-label">Born</div>
+                                        <div class="quick-stat-value">Aug 4, 1984</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <div class="action-buttons">
+                                <button class="btn btn-primary" onclick="viewFullBio()">
+                                    <i class="fas fa-file-alt"></i>
+                                    Full Biography
+                                </button>
+                                <button class="btn btn-outline" onclick="viewSeasonStats()">
+                                    <i class="fas fa-chart-bar"></i>
+                                    Season Stats
+                                </button>
+                                <button class="btn btn-outline" onclick="contactCoach()">
+                                    <i class="fas fa-envelope"></i>
+                                    Message Coach
+                                </button>
+                            </div>
+                            
+                            <div class="social-links">
+                                <a href="#" class="social-link" aria-label="Twitter"><i class="fab fa-twitter"></i></a>
+                                <a href="#" class="social-link" aria-label="Instagram"><i class="fab fa-instagram"></i></a>
+                                <a href="#" class="social-link" aria-label="Facebook"><i class="fab fa-facebook-f"></i></a>
+                                <a href="#" class="social-link" aria-label="Email"><i class="fas fa-envelope"></i></a>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Basketball Stats Grid -->
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div class="stat-icon" style="background: var(--gradient-athlete);">
+                                    <i class="fas fa-basketball-ball"></i>
+                                </div>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Games Played</h3>
+                                <div class="stat-value" id="gamesPlayed">28</div>
+                            </div>
+                            <div class="stat-change change-positive">↗ +4 games</div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div class="stat-icon" style="background: var(--gradient-performance);">
+                                    <i class="fas fa-bullseye"></i>
+                                </div>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Points Per Game</h3>
+                                <div class="stat-value" id="pointsPerGame">12.4</div>
+                            </div>
+                            <div class="stat-change change-positive">↗ +2.1 pts</div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div class="stat-icon" style="background: var(--gradient-success);">
+                                    <i class="fas fa-percentage"></i>
+                                </div>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Field Goal %</h3>
+                                <div class="stat-value" id="fieldGoalPct">45.3%</div>
+                            </div>
+                            <div class="stat-change change-positive">↗ +3.2%</div>
+                        </div>
+                        
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <div class="stat-icon" style="background: var(--gradient-warning);">
+                                    <i class="fas fa-hands"></i>
+                                </div>
+                            </div>
+                            <div class="stat-info">
+                                <h3>Assists Per Game</h3>
+                                <div class="stat-value" id="assistsPerGame">3.5</div>
+                            </div>
+                            <div class="stat-change change-positive">↗ +0.8 ast</div>
+                        </div>
+                    </div>
+
+                    <div class="content-grid">
+                        <!-- Performance Chart -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Performance Trends</h3>
+                                <div class="card-actions">
+                                    <button class="btn btn-outline" onclick="viewDetailedStats()">
+                                        <i class="fas fa-chart-line"></i>
+                                        View Details
+                                    </button>
+                                </div>
+                            </div>
+                            
+                            <div style="height: 300px; background: var(--bg-tertiary); border-radius: 12px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color);">
+                                <div style="text-align: center;">
+                                    <div style="font-size: 48px; margin-bottom: 1rem;">📈</div>
+                                    <div style="font-size: 18px; font-weight: 600; margin-bottom: 0.5rem; color: var(--text-primary);">Basketball Analytics</div>
+                                    <div style="font-size: 14px; color: var(--text-muted);">Track your game performance over time</div>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Quick Actions -->
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Quick Actions</h3>
+                            </div>
+                            
+                            <div style="display: grid; gap: 1rem;">
+                                <button class="btn btn-primary" onclick="logGame()">
+                                    <i class="fas fa-basketball-ball"></i>
+                                    Log Game Stats
+                                </button>
+                                <button class="btn btn-outline" onclick="logWorkout()">
+                                    <i class="fas fa-dumbbell"></i>
+                                    Log Training
+                                </button>
+                                <button class="btn btn-outline" onclick="setGoal()">
+                                    <i class="fas fa-bullseye"></i>
+                                    Set New Goal
+                                </button>
+                                <button class="btn btn-outline" onclick="logNutrition()">
+                                    <i class="fas fa-apple-alt"></i>
+                                    Log Nutrition
+                                </button>
+                                <button class="btn btn-outline" onclick="scheduleRecovery()">
+                                    <i class="fas fa-bed"></i>
+                                    Plan Recovery
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Performance Metrics -->
+                    <div class="performance-metrics">
+                        <div class="metric-card">
+                            <div class="metric-value" id="reboundsPerGame">4.2</div>
+                            <div class="metric-label">Rebounds Per Game</div>
+                            <div class="metric-change metric-improved">+0.5 reb</div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-value" id="stealsPerGame">1.8</div>
+                            <div class="metric-label">Steals Per Game</div>
+                            <div class="metric-change metric-improved">+0.3 stl</div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-value" id="threePointPct">38.7%</div>
+                            <div class="metric-label">3-Point %</div>
+                            <div class="metric-change metric-declined">-2.1%</div>
+                        </div>
+                        
+                        <div class="metric-card">
+                            <div class="metric-value" id="plusMinus">+8.5</div>
+                            <div class="metric-label">Plus/Minus</div>
+                            <div class="metric-change metric-improved">+3.2</div>
+                        </div>
+                    </div>
+
+                    <!-- Recent Activities -->
+                    <div class="recent-activities">
+                        <div class="card">
+                            <div class="card-header">
+                                <h3 class="card-title">Recent Activities</h3>
+                            </div>
+                            
+                            <div id="recentActivities">
+                                <!-- Activities will be populated by JavaScript -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Training Schedule Page -->
+            <div id="training-schedule-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Training Schedule</h3>
+                            <button class="btn btn-primary" onclick="openTrainingModal()">
+                                <i class="fas fa-plus"></i>
+                                Add Training
+                            </button>
+                        </div>
+                        
+                        <div id="trainingScheduleList">
+                            <!-- Training schedule will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Game Statistics Page -->
+            <div id="game-stats-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Game Statistics</h3>
+                            <button class="btn btn-primary" onclick="logGame()">
+                                <i class="fas fa-basketball-ball"></i>
+                                Log Game
+                            </button>
+                        </div>
+                        
+                        <div id="gameStatsList">
+                            <!-- Game stats will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Goals & Targets Page -->
+            <div id="goals-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Goals & Targets</h3>
+                            <button class="btn btn-primary" onclick="setGoal()">
+                                <i class="fas fa-bullseye"></i>
+                                Set New Goal
+                            </button>
+                        </div>
+                        
+                        <div id="goalsList">
+                            <!-- Goals will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Workout Log Page -->
+            <div id="workouts-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Workout Log</h3>
+                            <button class="btn btn-primary" onclick="logWorkout()">
+                                <i class="fas fa-dumbbell"></i>
+                                Log Workout
+                            </button>
+                        </div>
+                        
+                        <div id="workoutsList">
+                            <!-- Workouts will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Nutrition Tracking Page -->
+            <div id="nutrition-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Nutrition Tracking</h3>
+                            <button class="btn btn-primary" onclick="logNutrition()">
+                                <i class="fas fa-apple-alt"></i>
+                                Log Food
+                            </button>
+                        </div>
+                        
+                        <div id="nutritionList">
+                            <!-- Nutrition entries will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Recovery & Sleep Page -->
+            <div id="recovery-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Recovery & Sleep</h3>
+                            <button class="btn btn-primary" onclick="logSleep()">
+                                <i class="fas fa-bed"></i>
+                                Log Sleep
+                            </button>
+                        </div>
+                        
+                        <div id="recoveryList">
+                            <!-- Recovery data will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Medical Reports Page -->
+            <div id="medical-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Medical Reports</h3>
+                            <button class="btn btn-primary" onclick="addMedicalReport()">
+                                <i class="fas fa-plus"></i>
+                                Add Report
+                            </button>
+                        </div>
+                        
+                        <div id="medicalReportsList">
+                            <!-- Medical reports will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Team Chat Page -->
+            <div id="team-chat-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Team Chat</h3>
+                        </div>
+                        
+                        <div id="teamChatList">
+                            <!-- Team chat will be populated by JavaScript -->
+                        </div>
+                        
+                        <div style="margin-top: 1rem; display: flex; gap: 1rem;">
+                            <input type="text" class="form-input" id="chatMessage" placeholder="Type your message..." style="flex: 1;">
+                            <button class="btn btn-primary" onclick="sendChatMessage()">
+                                <i class="fas fa-paper-plane"></i>
+                                Send
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Teammates Page -->
+            <div id="teammates-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Teammates</h3>
+                        </div>
+                        
+                        <div id="teammatesList">
+                            <!-- Teammates will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Coach Feedback Page -->
+            <div id="coach-feedback-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Coach Feedback</h3>
+                            <button class="btn btn-primary" onclick="contactCoach()">
+                                <i class="fas fa-envelope"></i>
+                                Message Coach
+                            </button>
+                        </div>
+                        
+                        <div id="coachFeedbackList">
+                            <!-- Coach feedback will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Profile Page -->
+            <div id="profile-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">My Profile</h3>
+                            <button class="btn btn-primary" onclick="editProfile()">
+                                <i class="fas fa-edit"></i>
+                                Edit Profile
+                            </button>
+                        </div>
+                        
+                        <div id="profileContent">
+                            <!-- Profile content will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Achievements Page -->
+            <div id="achievements-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Achievements</h3>
+                        </div>
+                        
+                        <div id="achievementsList">
+                            <!-- Achievements will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Settings Page -->
+            <div id="settings-page" class="page-content">
+                <div class="dashboard-content">
+                    <div class="card">
+                        <div class="card-header">
+                            <h3 class="card-title">Settings</h3>
+                        </div>
+                        
+                        <div id="settingsContent">
+                            <!-- Settings will be populated by JavaScript -->
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </main>
+    </div>
+
+    <!-- Enhanced Modals -->
+    
+    <!-- Activity Modal -->
+    <div id="activityModal" class="modal">
+        <div class="modal-content">
+            <div class="card-header">
+                <h3 class="card-title">Log Activity</h3>
+                <span class="close" onclick="closeActivityModal()" style="cursor: pointer; font-size: 24px; color: var(--text-muted);">&times;</span>
+            </div>
+            
+            <form id="activityForm">
+                <div class="form-group">
+                    <label class="form-label">Activity Type</label>
+                    <select class="form-select" id="activityType" required>
+                        <option value="">Select Activity Type</option>
+                        <option value="game">Game</option>
+                        <option value="training">Training</option>
+                        <option value="workout">Workout</option>
+                        <option value="nutrition">Nutrition</option>
+                        <option value="sleep">Sleep</option>
+                    </select>
+                </div>
+                
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">Date</label>
+                        <input type="date" class="form-input" id="activityDate" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label class="form-label">Duration (minutes)</label>
+                        <input type="number" class="form-input" id="activityDuration" placeholder="90">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea class="form-textarea" id="activityNotes" rows="3" placeholder="Add your notes here..."></textarea>
+                </div>
+                
+                <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                    <i class="fas fa-plus"></i>
+                    Log Activity
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Game Modal -->
+    <div id="gameModal" class="modal">
+        <div class="modal-content">
+            <div class="card-header">
+                <h3 class="card-title">Log Game Statistics</h3>
+                <span class="close" onclick="closeGameModal()" style="cursor: pointer; font-size: 24px; color: var(--text-muted);">&times;</span>
+            </div>
+            
+            <form id="gameForm">
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+<div class="form-group">
+                       <label class="form-label">Opponent</label>
+                       <input type="text" class="form-input" id="gameOpponent" required placeholder="e.g., CSKA Moscow">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Date</label>
+                       <input type="date" class="form-input" id="gameDate" required>
+                   </div>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Points</label>
+                       <input type="number" class="form-input" id="gamePoints" min="0" placeholder="18">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Rebounds</label>
+                       <input type="number" class="form-input" id="gameRebounds" min="0" placeholder="6">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Assists</label>
+                       <input type="number" class="form-input" id="gameAssists" min="0" placeholder="4">
+                   </div>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Steals</label>
+                       <input type="number" class="form-input" id="gameSteals" min="0" placeholder="2">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Blocks</label>
+                       <input type="number" class="form-input" id="gameBlocks" min="0" placeholder="1">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Minutes Played</label>
+                       <input type="number" class="form-input" id="gameMinutes" min="0" placeholder="32">
+                   </div>
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Game Result</label>
+                   <select class="form-select" id="gameResult" required>
+                       <option value="">Select Result</option>
+                       <option value="win">Win</option>
+                       <option value="loss">Loss</option>
+                   </select>
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Game Notes</label>
+                   <textarea class="form-textarea" id="gameNotes" rows="3" placeholder="How did you perform? Key moments, areas for improvement..."></textarea>
+               </div>
+               
+               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                   <i class="fas fa-basketball-ball"></i>
+                   Log Game
+               </button>
+           </form>
+       </div>
+   </div>
+
+   <!-- Goal Modal -->
+   <div id="goalModal" class="modal">
+       <div class="modal-content">
+           <div class="card-header">
+               <h3 class="card-title">Set New Goal</h3>
+               <span class="close" onclick="closeGoalModal()" style="cursor: pointer; font-size: 24px; color: var(--text-muted);">&times;</span>
+           </div>
+           
+           <form id="goalForm">
+               <div class="form-group">
+                   <label class="form-label">Goal Title</label>
+                   <input type="text" class="form-input" id="goalTitle" required placeholder="e.g., Improve free throw percentage">
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Goal Category</label>
+                   <select class="form-select" id="goalCategory" required>
+                       <option value="">Select Category</option>
+                       <option value="scoring">Scoring</option>
+                       <option value="defense">Defense</option>
+                       <option value="fitness">Fitness</option>
+                       <option value="skills">Skills</option>
+                       <option value="team">Team Performance</option>
+                   </select>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Target Value</label>
+                       <input type="number" class="form-input" id="goalTarget" required placeholder="85">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Current Value</label>
+                       <input type="number" class="form-input" id="goalCurrent" placeholder="78">
+                   </div>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Target Date</label>
+                       <input type="date" class="form-input" id="goalTargetDate" required>
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Priority</label>
+                       <select class="form-select" id="goalPriority" required>
+                           <option value="">Select Priority</option>
+                           <option value="low">Low</option>
+                           <option value="medium">Medium</option>
+                           <option value="high">High</option>
+                       </select>
+                   </div>
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Description</label>
+                   <textarea class="form-textarea" id="goalDescription" rows="3" placeholder="Describe your goal in detail..."></textarea>
+               </div>
+               
+               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                   <i class="fas fa-bullseye"></i>
+                   Set Goal
+               </button>
+           </form>
+       </div>
+   </div>
+
+   <!-- Workout Modal -->
+   <div id="workoutModal" class="modal">
+       <div class="modal-content">
+           <div class="card-header">
+               <h3 class="card-title">Log Workout</h3>
+               <span class="close" onclick="closeWorkoutModal()" style="cursor: pointer; font-size: 24px; color: var(--text-muted);">&times;</span>
+           </div>
+           
+           <form id="workoutForm">
+               <div class="form-group">
+                   <label class="form-label">Workout Type</label>
+                   <select class="form-select" id="workoutType" required>
+                       <option value="">Select Workout Type</option>
+                       <option value="strength">Strength Training</option>
+                       <option value="cardio">Cardio</option>
+                       <option value="basketball">Basketball Skills</option>
+                       <option value="conditioning">Conditioning</option>
+                       <option value="recovery">Recovery</option>
+                   </select>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Duration (minutes)</label>
+                       <input type="number" class="form-input" id="workoutDuration" required placeholder="75">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Intensity</label>
+                       <select class="form-select" id="workoutIntensity" required>
+                           <option value="">Select Intensity</option>
+                           <option value="low">Low</option>
+                           <option value="moderate">Moderate</option>
+                           <option value="high">High</option>
+                           <option value="maximum">Maximum</option>
+                       </select>
+                   </div>
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Location</label>
+                   <input type="text" class="form-input" id="workoutLocation" placeholder="e.g., Team Gym, Home, Court">
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Exercises/Activities</label>
+                   <textarea class="form-textarea" id="workoutExercises" rows="3" placeholder="List the exercises or activities you performed..."></textarea>
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Workout Notes</label>
+                   <textarea class="form-textarea" id="workoutNotes" rows="2" placeholder="How did you feel? Any achievements or challenges?"></textarea>
+               </div>
+               
+               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                   <i class="fas fa-dumbbell"></i>
+                   Log Workout
+               </button>
+           </form>
+       </div>
+   </div>
+
+   <!-- Nutrition Modal -->
+   <div id="nutritionModal" class="modal">
+       <div class="modal-content">
+           <div class="card-header">
+               <h3 class="card-title">Log Nutrition</h3>
+               <span class="close" onclick="closeNutritionModal()" style="cursor: pointer; font-size: 24px; color: var(--text-muted);">&times;</span>
+           </div>
+           
+           <form id="nutritionForm">
+               <div class="form-group">
+                   <label class="form-label">Meal Type</label>
+                   <select class="form-select" id="mealType" required>
+                       <option value="">Select Meal</option>
+                       <option value="breakfast">Breakfast</option>
+                       <option value="lunch">Lunch</option>
+                       <option value="dinner">Dinner</option>
+                       <option value="snack">Snack</option>
+                       <option value="pre-workout">Pre-Workout</option>
+                       <option value="post-workout">Post-Workout</option>
+                   </select>
+               </div>
+               
+               <div class="form-group">
+                   <label class="form-label">Food Items</label>
+                   <textarea class="form-textarea" id="foodItems" rows="3" placeholder="List the foods you ate..." required></textarea>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Calories</label>
+                       <input type="number" class="form-input" id="mealCalories" placeholder="650">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Protein (g)</label>
+                       <input type="number" class="form-input" id="mealProtein" placeholder="35">
+                   </div>
+               </div>
+               
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                   <div class="form-group">
+                       <label class="form-label">Carbs (g)</label>
+                       <input type="number" class="form-input" id="mealCarbs" placeholder="80">
+                   </div>
+                   
+                   <div class="form-group">
+                       <label class="form-label">Fats (g)</label>
+                       <input type="number" class="form-input" id="mealFats" placeholder="20">
+                   </div>
+               </div>
+               
+               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem;">
+                   <i class="fas fa-apple-alt"></i>
+                   Log Nutrition
+               </button>
+           </form>
+       </div>
+   </div>
+
+   <script>
+       // Enhanced Global Data for Basketball Player
+       let playerData = {
+           name: 'Mardy Collins',
+           number: '01',
+           position: 'Shooting Guard',
+           team: 'Lokomotiv Kuban',
+           height: '202 cm',
+           weight: '110 kg',
+           age: 39,
+           born: 'August 4, 1984',
+           avatar: 'MC'
+       };
+
+       let basketballStats = {
+           gamesPlayed: 28,
+           pointsPerGame: 12.4,
+           fieldGoalPct: 45.3,
+           assistsPerGame: 3.5,
+           reboundsPerGame: 4.2,
+           stealsPerGame: 1.8,
+           threePointPct: 38.7,
+           plusMinus: 8.5
+       };
+
+       let gameStats = [
+           {
+               id: 1,
+               opponent: 'CSKA Moscow',
+               date: '2024-01-15',
+               points: 18,
+               rebounds: 6,
+               assists: 4,
+               steals: 2,
+               blocks: 1,
+               minutes: 32,
+               result: 'win',
+               notes: 'Great performance, hit clutch shots in the 4th quarter'
+           },
+           {
+               id: 2,
+               opponent: 'Real Madrid',
+               date: '2024-01-12',
+               points: 14,
+               rebounds: 5,
+               assists: 7,
+               steals: 3,
+               blocks: 0,
+               minutes: 28,
+               result: 'loss',
+               notes: 'Focused on playmaking, good defensive effort'
+           }
+       ];
+
+       let goals = [
+           {
+               id: 1,
+               title: 'Improve Free Throw Percentage',
+               category: 'scoring',
+               target: 85,
+               current: 78,
+               targetDate: '2024-06-01',
+               priority: 'high',
+               description: 'Focus on consistent form and mental approach',
+               status: 'in-progress'
+           },
+           {
+               id: 2,
+               title: 'Increase 3-Point Accuracy',
+               category: 'scoring',
+               target: 40,
+               current: 38.7,
+               targetDate: '2024-05-15',
+               priority: 'medium',
+               description: 'Work on catch-and-shoot situations',
+               status: 'in-progress'
+           }
+       ];
+
+       let workouts = [
+           {
+               id: 1,
+               type: 'strength',
+               duration: 75,
+               intensity: 'high',
+               location: 'Team Gym',
+               exercises: 'Squats, deadlifts, bench press, core work',
+               notes: 'Felt strong, increased weight on squats',
+               date: '2024-01-15'
+           },
+           {
+               id: 2,
+               type: 'basketball',
+               duration: 90,
+               intensity: 'moderate',
+               location: 'Practice Court',
+               exercises: 'Shooting drills, ball handling, scrimmage',
+               notes: 'Good shooting session, worked on footwork',
+               date: '2024-01-14'
+           }
+       ];
+
+       let nutritionEntries = [
+           {
+               id: 1,
+               mealType: 'breakfast',
+               foodItems: 'Oatmeal with berries, eggs, orange juice',
+               calories: 650,
+               protein: 25,
+               carbs: 85,
+               fats: 15,
+               date: '2024-01-15'
+           },
+           {
+               id: 2,
+               mealType: 'lunch',
+               foodItems: 'Grilled chicken, quinoa, vegetables',
+               calories: 750,
+               protein: 45,
+               carbs: 60,
+               fats: 20,
+               date: '2024-01-15'
+           }
+       ];
+
+       let trainingSchedule = [
+           {
+               id: 1,
+               type: 'Team Practice',
+               date: '2024-01-16',
+               time: '10:00',
+               duration: 120,
+               location: 'Main Court',
+               description: 'Full team practice - tactics and conditioning'
+           },
+           {
+               id: 2,
+               type: 'Individual Skills',
+               date: '2024-01-16',
+               time: '15:30',
+               duration: 60,
+               location: 'Practice Court',
+               description: 'Shooting and ball handling work'
+           }
+       ];
+
+       let teammates = [
+           {
+               id: 1,
+               name: 'Nikola Kalinic',
+               position: 'Forward',
+               number: 33,
+               status: 'active'
+           },
+           {
+               id: 2,
+               name: 'Will Cummings',
+               position: 'Guard',
+               number: 13,
+               status: 'active'
+           },
+           {
+               id: 3,
+               name: 'Anthony Randolph',
+               position: 'Forward',
+               number: 15,
+               status: 'injured'
+           }
+       ];
+
+       let chatMessages = [
+           {
+               id: 1,
+               sender: 'Coach Martinez',
+               message: 'Great game yesterday! Keep up the defensive intensity.',
+               time: '2 hours ago'
+           },
+           {
+               id: 2,
+               sender: 'Nikola Kalinic',
+               message: 'Good practice today. Ready for tomorrow\'s game!',
+               time: '4 hours ago'
+           }
+       ];
+
+       let coachFeedback = [
+           {
+               id: 1,
+               coach: 'Coach Martinez',
+               feedback: 'Excellent defensive performance in the last game. Focus on shot selection.',
+               date: '2024-01-15',
+               type: 'performance'
+           },
+           {
+               id: 2,
+               coach: 'Assistant Coach Petrov',
+               feedback: 'Your leadership on court has improved significantly this season.',
+               date: '2024-01-12',
+               type: 'leadership'
+           }
+       ];
+
+       let achievements = [
+           {
+               id: 1,
+               title: 'EuroCup Champion',
+               year: 2013,
+               description: 'Won EuroCup with Lokomotiv Kuban',
+               icon: '🏆'
+           },
+           {
+               id: 2,
+               title: 'All-EuroCup First Team',
+               year: 2013,
+               description: 'Selected to EuroCup All-First Team',
+               icon: '⭐'
+           },
+           {
+               id: 3,
+               title: 'Serbian Cup Winner',
+               year: 2010,
+               description: 'Won Serbian Cup with KK Partizan',
+               icon: '🏅'
+           }
+       ];
+
+       let currentPage = 'overview';
+
+       // Mobile Sidebar Toggle
+       function toggleSidebar() {
+           const sidebar = document.getElementById('sidebar');
+           sidebar.classList.toggle('active');
+       }
+
+       // Page Navigation System
+       function initializeNavigation() {
+           const navLinks = document.querySelectorAll('.nav-link[data-page]');
+           
+           navLinks.forEach(link => {
+               link.addEventListener('click', function(e) {
+                   e.preventDefault();
+                   
+                   const pageId = this.getAttribute('data-page');
+                   navigateToPage(pageId);
+                   
+                   // Close sidebar on mobile after navigation
+                   if (window.innerWidth <= 1024) {
+                       document.getElementById('sidebar').classList.remove('active');
+                   }
+               });
+           });
+       }
+
+       function navigateToPage(pageId) {
+           // Remove active class from all nav links
+           document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+           
+           // Add active class to clicked link
+           const activeLink = document.querySelector(`[data-page="${pageId}"]`);
+           if (activeLink) {
+               activeLink.classList.add('active');
+           }
+           
+           // Hide all page contents
+           document.querySelectorAll('.page-content').forEach(page => page.classList.remove('active'));
+           
+           // Show selected page
+           const targetPage = document.getElementById(pageId + '-page');
+           if (targetPage) {
+               targetPage.classList.add('active');
+               updatePageTitle(pageId);
+               currentPage = pageId;
+               
+               // Load page-specific content
+               loadPageContent(pageId);
+           }
+       }
+
+       function updatePageTitle(page) {
+           const pageTitle = document.getElementById('pageTitle');
+           const pageSubtitle = document.getElementById('pageSubtitle');
+           
+           const pageTitles = {
+               'overview': {
+                   title: 'Performance Dashboard',
+                   subtitle: 'Track your basketball performance and training progress'
+               },
+               'training-schedule': {
+                   title: 'Training Schedule',
+                   subtitle: 'Your upcoming training sessions and team activities'
+               },
+               'game-stats': {
+                   title: 'Game Statistics',
+                   subtitle: 'Detailed game performance and season statistics'
+               },
+               'goals': {
+                   title: 'Goals & Targets',
+                   subtitle: 'Set and track your basketball performance goals'
+               },
+               'workouts': {
+                   title: 'Workout Log',
+                   subtitle: 'Log and review your training sessions'
+               },
+               'nutrition': {
+                   title: 'Nutrition Tracking',
+                   subtitle: 'Monitor your daily nutrition and hydration'
+               },
+               'recovery': {
+                   title: 'Recovery & Sleep',
+                   subtitle: 'Track your rest and recovery metrics'
+               },
+               'medical': {
+                   title: 'Medical Reports',
+                   subtitle: 'Health information and medical assessments'
+               },
+               'team-chat': {
+                   title: 'Team Chat',
+                   subtitle: 'Communicate with your teammates and coaches'
+               },
+               'teammates': {
+                   title: 'Teammates',
+                   subtitle: 'View and connect with your team members'
+               },
+               'coach-feedback': {
+                   title: 'Coach Feedback',
+                   subtitle: 'Reviews and recommendations from your coaching staff'
+               },
+               'profile': {
+                   title: 'My Profile',
+                   subtitle: 'Manage your personal information and player profile'
+               },
+               'achievements': {
+                   title: 'Achievements',
+                   subtitle: 'Your career accomplishments and milestones'
+               },
+               'settings': {
+                   title: 'Settings',
+                   subtitle: 'Customize your dashboard preferences'
+               }
+           };
+           
+           const pageInfo = pageTitles[page] || { title: 'Dashboard', subtitle: 'Basketball performance tracking' };
+           pageTitle.textContent = pageInfo.title;
+           pageSubtitle.textContent = pageInfo.subtitle;
+       }
+
+       // Load Page Content
+       function loadPageContent(pageId) {
+           switch(pageId) {
+               case 'overview':
+                   loadRecentActivities();
+                   break;
+               case 'training-schedule':
+                   renderTrainingSchedule();
+                   break;
+               case 'game-stats':
+                   renderGameStats();
+                   break;
+               case 'goals':
+                   renderGoals();
+                   break;
+               case 'workouts':
+                   renderWorkouts();
+                   break;
+               case 'nutrition':
+                   renderNutrition();
+                   break;
+               case 'recovery':
+                   renderRecovery();
+                   break;
+               case 'medical':
+                   renderMedicalReports();
+                   break;
+               case 'team-chat':
+                   renderTeamChat();
+                   break;
+               case 'teammates':
+                   renderTeammates();
+                   break;
+               case 'coach-feedback':
+                   renderCoachFeedback();
+                   break;
+               case 'profile':
+                   renderProfile();
+                   break;
+               case 'achievements':
+                   renderAchievements();
+                   break;
+               case 'settings':
+                   renderSettings();
+                   break;
+           }
+       }
+
+       // Render Functions
+       function loadRecentActivities() {
+           const recentActivities = document.getElementById('recentActivities');
+           if (!recentActivities) return;
+           
+           const activities = [
+               {
+                   icon: '🏀',
+                   title: 'Outstanding Game Performance',
+                   description: '18 points, 6 rebounds, 4 assists vs CSKA Moscow',
+                   time: '2 hours ago',
+                   gradient: 'var(--gradient-athlete)'
+               },
+               {
+                   icon: '💪',
+                   title: 'Strength Training Completed',
+                   description: 'Upper body workout • 75 minutes • High intensity',
+                   time: '1 day ago',
+                   gradient: 'var(--gradient-success)'
+               },
+               {
+                   icon: '🎯',
+                   title: 'Shooting Practice',
+                   description: 'Free throw accuracy improved to 85%',
+                   time: '2 days ago',
+                   gradient: 'var(--gradient-performance)'
+               }
+           ];
+           
+           recentActivities.innerHTML = activities.map(activity => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: ${activity.gradient};">
+                       ${activity.icon}
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${activity.title}</div>
+                       <div class="activity-description">${activity.description}</div>
+                   </div>
+                   <div class="activity-time">${activity.time}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderTrainingSchedule() {
+           const scheduleList = document.getElementById('trainingScheduleList');
+           if (!scheduleList) return;
+           
+           scheduleList.innerHTML = trainingSchedule.map(session => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-primary);">
+                       📅
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${session.type}</div>
+                       <div class="activity-description">${session.location} • ${session.duration} minutes • ${session.description}</div>
+                   </div>
+                   <div class="activity-time">${formatDate(session.date)} ${session.time}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderGameStats() {
+           const gameStatsList = document.getElementById('gameStatsList');
+           if (!gameStatsList) return;
+           
+           gameStatsList.innerHTML = gameStats.map(game => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-athlete);">
+                       🏀
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">vs ${game.opponent} - ${game.result.toUpperCase()}</div>
+                       <div class="activity-description">${game.points} pts, ${game.rebounds} reb, ${game.assists} ast, ${game.steals} stl in ${game.minutes} min</div>
+                       ${game.notes ? `<div style="font-style: italic; color: var(--text-muted); margin-top: 0.5rem;">"${game.notes}"</div>` : ''}
+                   </div>
+                   <div class="activity-time">${formatDate(game.date)}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderGoals() {
+           const goalsList = document.getElementById('goalsList');
+           if (!goalsList) return;
+           
+           goalsList.innerHTML = goals.map(goal => {
+               const progressPct = Math.round((goal.current / goal.target) * 100);
+               return `
+                   <div class="card" style="margin-bottom: 1rem;">
+                       <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 1rem;">
+                           <div>
+                               <h4 style="color: var(--text-primary); margin-bottom: 0.5rem;">${goal.title}</h4>
+                               <p style="color: var(--text-muted); font-size: 14px;">${goal.description}</p>
+                           </div>
+                           <span style="padding: 4px 8px; background: rgba(229, 62, 62, 0.2); color: var(--secondary-color); border-radius: 4px; font-size: 12px; font-weight: 600;">${goal.priority.toUpperCase()}</span>
+                       </div>
+                       <div style="margin-bottom: 0.5rem;">
+                           <div style="display: flex; justify-content: space-between; margin-bottom: 0.5rem;">
+                               <span style="font-size: 14px; color: var(--text-muted);">Progress: ${goal.current}/${goal.target}</span>
+                               <span style="font-size: 14px; color: var(--text-muted);">${progressPct}%</span>
+                           </div>
+                           <div style="width: 100%; height: 8px; background: var(--bg-tertiary); border-radius: 4px; overflow: hidden;">
+                               <div style="width: ${progressPct}%; height: 100%; background: var(--gradient-athlete); border-radius: 4px; transition: width 0.3s ease;"></div>
+                           </div>
+                       </div>
+                       <div style="font-size: 12px; color: var(--text-muted);">Target Date: ${formatDate(goal.targetDate)}</div>
+                   </div>
+               `;
+           }).join('');
+       }
+
+       function renderWorkouts() {
+           const workoutsList = document.getElementById('workoutsList');
+           if (!workoutsList) return;
+           
+           workoutsList.innerHTML = workouts.map(workout => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-success);">
+                       💪
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${formatWorkoutType(workout.type)} - ${workout.intensity.charAt(0).toUpperCase() + workout.intensity.slice(1)} Intensity</div>
+                       <div class="activity-description">${workout.location} • ${workout.duration} minutes</div>
+                       <div style="font-size: 14px; color: var(--text-muted); margin-top: 0.5rem;">${workout.exercises}</div>
+                       ${workout.notes ? `<div style="font-style: italic; color: var(--text-muted); margin-top: 0.5rem;">"${workout.notes}"</div>` : ''}
+                   </div>
+                   <div class="activity-time">${formatDate(workout.date)}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderNutrition() {
+           const nutritionList = document.getElementById('nutritionList');
+           if (!nutritionList) return;
+           
+           nutritionList.innerHTML = nutritionEntries.map(entry => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-warning);">
+                       🥗
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${entry.mealType.charAt(0).toUpperCase() + entry.mealType.slice(1)}</div>
+                       <div class="activity-description">${entry.foodItems}</div>
+                       <div style="font-size: 14px; color: var(--text-muted); margin-top: 0.5rem;">
+                           ${entry.calories} kcal • ${entry.protein}g protein • ${entry.carbs}g carbs • ${entry.fats}g fats
+                       </div>
+                   </div>
+                   <div class="activity-time">${formatDate(entry.date)}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderRecovery() {
+           const recoveryList = document.getElementById('recoveryList');
+           if (!recoveryList) return;
+           
+           recoveryList.innerHTML = `
+               <div class="card">
+                   <h4 style="color: var(--text-primary); margin-bottom: 1rem;">Sleep Quality Overview</h4>
+                   <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 1rem;">
+                       <div class="metric-card">
+                           <div class="metric-value">8.2h</div>
+                           <div class="metric-label">Avg Sleep Duration</div>
+                           <div class="metric-change metric-improved">+15 min</div>
+                       </div>
+                       <div class="metric-card">
+                           <div class="metric-value">88%</div>
+                           <div class="metric-label">Sleep Quality</div>
+                           <div class="metric-change metric-improved">+5%</div>
+                       </div>
+                       <div class="metric-card">
+                           <div class="metric-value">92%</div>
+                           <div class="metric-label">Recovery Score</div>
+                           <div class="metric-change metric-stable">No change</div>
+                       </div>
+                   </div>
+               </div>
+           `;
+       }
+
+       function renderMedicalReports() {
+           const medicalReportsList = document.getElementById('medicalReportsList');
+           if (!medicalReportsList) return;
+           
+           const medicalReports = [
+               {
+                   type: 'Physical Assessment',
+                   date: '2024-01-10',
+                   status: 'Clear',
+                   notes: 'No issues found, excellent physical condition'
+               },
+               {
+                   type: 'Injury Check',
+                   date: '2024-01-05',
+                   status: 'Minor',
+                   notes: 'Minor knee discomfort, recommend rest and ice'
+               }
+           ];
+           
+           medicalReportsList.innerHTML = medicalReports.map(report => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-performance);">
+                       ❤️
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${report.type} - ${report.status}</div>
+                       <div class="activity-description">${report.notes}</div>
+                   </div>
+                   <div class="activity-time">${formatDate(report.date)}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderTeamChat() {
+           const teamChatList = document.getElementById('teamChatList');
+           if (!teamChatList) return;
+           
+           teamChatList.innerHTML = chatMessages.map(message => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-primary);">
+                       💬
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${message.sender}</div>
+                       <div class="activity-description">${message.message}</div>
+                   </div>
+                   <div class="activity-time">${message.time}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderTeammates() {
+           const teammatesList = document.getElementById('teammatesList');
+           if (!teammatesList) return;
+           
+           teammatesList.innerHTML = teammates.map(teammate => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-success);">
+                       👤
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${teammate.name} #${teammate.number}</div>
+                       <div class="activity-description">${teammate.position}</div>
+                   </div>
+                   <div class="activity-time">
+                       <span style="padding: 4px 8px; background: ${teammate.status === 'active' ? 'rgba(72, 187, 120, 0.2)' : 'rgba(239, 68, 68, 0.2)'}; color: ${teammate.status === 'active' ? '#48bb78' : 'var(--secondary-color)'}; border-radius: 4px; font-size: 12px;">
+                           ${teammate.status.toUpperCase()}
+                       </span>
+                   </div>
+               </div>
+           `).join('');
+       }
+
+       function renderCoachFeedback() {
+           const coachFeedbackList = document.getElementById('coachFeedbackList');
+           if (!coachFeedbackList) return;
+           
+           coachFeedbackList.innerHTML = coachFeedback.map(feedback => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-athlete);">
+                       📋
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${feedback.coach} - ${feedback.type.charAt(0).toUpperCase() + feedback.type.slice(1)}</div>
+                       <div class="activity-description">${feedback.feedback}</div>
+                   </div>
+                   <div class="activity-time">${formatDate(feedback.date)}</div>
+               </div>
+           `).join('');
+       }
+
+       function renderProfile() {
+           const profileContent = document.getElementById('profileContent');
+           if (!profileContent) return;
+           
+           profileContent.innerHTML = `
+               <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 2rem;">
+                   <div>
+                       <h4 style="color: var(--text-primary); margin-bottom: 1rem;">Personal Information</h4>
+                       <div style="display: grid; gap: 1rem;">
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Full Name</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">Mardy Collins</div>
+                           </div>
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Position</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">Shooting Guard / Defender</div>
+                           </div>
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Team</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">Lokomotiv Kuban</div>
+                           </div>
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Jersey Number</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">#01</div>
+                           </div>
+                       </div>
+                   </div>
+                   <div>
+                       <h4 style="color: var(--text-primary); margin-bottom: 1rem;">Physical Stats</h4>
+                       <div style="display: grid; gap: 1rem;">
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Height</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">202 cm</div>
+                           </div>
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Weight</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">110 kg</div>
+                           </div>
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Date of Birth</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">August 4, 1984</div>
+                           </div>
+                           <div>
+                               <label style="font-size: 12px; color: var(--text-muted);">Age</label>
+                               <div style="font-weight: 600; color: var(--text-primary);">39 years</div>
+                           </div>
+                       </div>
+                   </div>
+               </div>
+           `;
+       }
+
+       function renderAchievements() {
+           const achievementsList = document.getElementById('achievementsList');
+           if (!achievementsList) return;
+           
+           achievementsList.innerHTML = achievements.map(achievement => `
+               <div class="activity-item">
+                   <div class="activity-icon" style="background: var(--gradient-warning); font-size: 24px;">
+                       ${achievement.icon}
+                   </div>
+                   <div class="activity-info">
+                       <div class="activity-title">${achievement.title} (${achievement.year})</div>
+                       <div class="activity-description">${achievement.description}</div>
+                   </div>
+               </div>
+           `).join('');
+       }
+
+       function renderSettings() {
+           const settingsContent = document.getElementById('settingsContent');
+           if (!settingsContent) return;
+           
+           settingsContent.innerHTML = `
+               <div style="display: grid; gap: 2rem;">
+                   <div>
+                       <h4 style="color: var(--text-primary); margin-bottom: 1rem;">Notifications</h4>
+                       <div style="display: grid; gap: 1rem;">
+                           <label style="display: flex; align-items: center; gap: 0.5rem;">
+                               <input type="checkbox" checked> Email notifications for games
+                           </label>
+                           <label style="display: flex; align-items: center; gap: 0.5rem;">
+                               <input type="checkbox" checked> Training reminders
+                           </label>
+                           <label style="display: flex; align-items: center; gap: 0.5rem;">
+                               <input type="checkbox"> Coach feedback alerts
+                           </label>
+                       </div>
+                   </div>
+                   
+                   <div>
+                       <h4 style="color: var(--text-primary); margin-bottom: 1rem;">Privacy</h4>
+                       <div style="display: grid; gap: 1rem;">
+                           <label style="display: flex; align-items: center; gap: 0.5rem;">
+                               <input type="checkbox" checked> Share stats with team
+                           </label>
+                           <label style="display: flex; align-items: center; gap: 0.5rem;">
+                               <input type="checkbox"> Public profile visibility
+                           </label>
+                       </div>
+                   </div>
+                   
+                   <button class="btn btn-primary" onclick="saveSettings()" style="width: fit-content;">
+                       <i class="fas fa-save"></i>
+                       Save Settings
+                   </button>
+               </div>
+           `;
+       }
+
+       // Modal Functions
+       function openActivityModal() {
+           document.getElementById('activityModal').style.display = 'block';
+           document.getElementById('activityDate').value = new Date().toISOString().split('T')[0];
+       }
+
+       function closeActivityModal() {
+           document.getElementById('activityModal').style.display = 'none';
+           document.getElementById('activityForm').reset();
+       }
+
+       function logGame() {
+           document.getElementById('gameModal').style.display = 'block';
+           document.getElementById('gameDate').value = new Date().toISOString().split('T')[0];
+       }
+
+       function closeGameModal() {
+           document.getElementById('gameModal').style.display = 'none';
+           document.getElementById('gameForm').reset();
+       }
+
+       function setGoal() {
+           document.getElementById('goalModal').style.display = 'block';
+           
+           // Set default target date to 3 months from now
+           const targetDate = new Date();
+           targetDate.setMonth(targetDate.getMonth() + 3);
+           document.getElementById('goalTargetDate').value = targetDate.toISOString().split('T')[0];
+       }
+
+       function closeGoalModal() {
+           document.getElementById('goalModal').style.display = 'none';
+           document.getElementById('goalForm').reset();
+       }
+
+       function logWorkout() {
+           document.getElementById('workoutModal').style.display = 'block';
+       }
+
+       function closeWorkoutModal() {
+           document.getElementById('workoutModal').style.display = 'none';
+           document.getElementById('workoutForm').reset();
+       }
+
+       function logNutrition() {
+           document.getElementById('nutritionModal').style.display = 'block';
+       }
+
+       function closeNutritionModal() {
+           document.getElementById('nutritionModal').style.display = 'none';
+           document.getElementById('nutritionForm').reset();
+       }
+
+       // Action Functions
+       function scheduleRecovery() {
+           showNotification('😴 Recovery scheduling feature coming soon!', 'info');
+       }
+
+       function logSleep() {
+           showNotification('😴 Sleep logging feature coming soon!', 'info');
+       }
+
+       function addMedicalReport() {
+           showNotification('❤️ Medical report feature coming soon!', 'info');
+       }
+
+       function contactCoach() {
+           showNotification('💬 Contacting coach...', 'info');
+           // Simulate sending message
+           setTimeout(() => {
+               showNotification('✅ Message sent to coach!', 'success');
+           }, 2000);
+       }
+
+       function viewFullBio() {
+           showNotification('📄 Full biography feature coming soon!', 'info');
+       }
+
+       function viewSeasonStats() {
+           navigateToPage('game-stats');
+       }
+
+       function viewDetailedStats() {
+           navigateToPage('game-stats');
+       }
+
+       function editProfile() {
+           showNotification('✏️ Profile editing feature coming soon!', 'info');
+       }
+
+       function saveSettings() {
+           showNotification('💾 Settings saved successfully!', 'success');
+       }
+
+       function openPlayerGallery() {
+           showNotification('📸 Player gallery feature coming soon!', 'info');
+       }
+
+       function openTrainingModal() {
+           showNotification('📅 Training scheduling feature coming soon!', 'info');
+       }
+
+       function sendChatMessage() {
+           const messageInput = document.getElementById('chatMessage');
+           const message = messageInput.value.trim();
+           
+           if (message) {
+               // Add message to chat
+               chatMessages.unshift({
+                   id: chatMessages.length + 1,
+                   sender: 'You',
+                   message: message,
+                   time: 'Just now'
+               });
+               
+               messageInput.value = '';
+               renderTeamChat();
+               showNotification('💬 Message sent!', 'success');
+           }
+       }
+
+       function showNotifications() {
+           const notifications = [
+               'Game tomorrow at 7:00 PM vs Real Madrid',
+               'Training session in 2 hours',
+               'New coach feedback available',
+               'Teammate Will Cummings sent you a message'
+           ];
+           
+           const notificationText = notifications.join('\n• ');
+           alert('🔔 Notifications:\n\n• ' + notificationText);
+       }
+
+       // Form Handlers
+       document.addEventListener('DOMContentLoaded', function() {
+           // Activity Form
+           const activityForm = document.getElementById('activityForm');
+           if (activityForm) {
+               activityForm.addEventListener('submit', function(e) {
+                   e.preventDefault();
+                   
+                   const activityType = document.getElementById('activityType').value;
+                   const activityDate = document.getElementById('activityDate').value;
+                   const activityDuration = document.getElementById('activityDuration').value;
+                   const activityNotes = document.getElementById('activityNotes').value;
+                   
+                   // Add to appropriate data store based on type
+                   showNotification(`✅ ${activityType.charAt(0).toUpperCase() + activityType.slice(1)} logged successfully!`, 'success');
+                   closeActivityModal();
+                   
+                   // Refresh current page if needed
+                   if (currentPage === 'overview') {
+                       loadRecentActivities();
+                   }
+               });
+           }
+
+           // Game Form
+           const gameForm = document.getElementById('gameForm');
+           if (gameForm) {
+               gameForm.addEventListener('submit', function(e) {
+                   e.preventDefault();
+                   
+                   const newGame = {
+                       id: gameStats.length + 1,
+                       opponent: document.getElementById('gameOpponent').value,
+                       date: document.getElementById('gameDate').value,
+                       points: parseInt(document.getElementById('gamePoints').value) || 0,
+                       rebounds: parseInt(document.getElementById('gameRebounds').value) || 0,
+                       assists: parseInt(document.getElementById('gameAssists').value) || 0,
+                       steals: parseInt(document.getElementById('gameSteals').value) || 0,
+                       blocks: parseInt(document.getElementById('gameBlocks').value) || 0,
+                       minutes: parseInt(document.getElementById('gameMinutes').value) || 0,
+                       result: document.getElementById('gameResult').value,
+                       notes: document.getElementById('gameNotes').value
+                   };
+                   
+                   gameStats.unshift(newGame);
+                   closeGameModal();
+                   
+                   // Update stats if we're on the right page
+                   if (currentPage === 'game-stats') {
+                       renderGameStats();
+                   }
+                   
+                   showNotification('🏀 Game statistics logged successfully!', 'success');
+               });
+           }
+
+           // Goal Form
+           const goalForm = document.getElementById('goalForm');
+           if (goalForm) {
+               goalForm.addEventListener('submit', function(e) {
+                   e.preventDefault();
+                   
+                   const newGoal = {
+                       id: goals.length + 1,
+                       title: document.getElementById('goalTitle').value,
+                       category: document.getElementById('goalCategory').value,
+                       target: parseFloat(document.getElementById('goalTarget').value),
+                       current: parseFloat(document.getElementById('goalCurrent').value) || 0,
+                       targetDate: document.getElementById('goalTargetDate').value,
+                       priority: document.getElementById('goalPriority').value,
+                       description: document.getElementById('goalDescription').value,
+                       status: 'in-progress'
+                   };
+                   
+                   goals.push(newGoal);
+                   closeGoalModal();
+                   
+                   if (currentPage === 'goals') {
+                       renderGoals();
+                   }
+                   
+                   showNotification('🎯 Goal set successfully!', 'success');
+               });
+           }
+
+           // Workout Form
+           const workoutForm = document.getElementById('workoutForm');
+           if (workoutForm) {
+               workoutForm.addEventListener('submit', function(e) {
+                   e.preventDefault();
+                   
+                   const newWorkout = {
+                       id: workouts.length + 1,
+                       type: document.getElementById('workoutType').value,
+                       duration: parseInt(document.getElementById('workoutDuration').value),
+                       intensity: document.getElementById('workoutIntensity').value,
+                       location: document.getElementById('workoutLocation').value,
+                       exercises: document.getElementById('workoutExercises').value,
+                       notes: document.getElementById('workoutNotes').value,
+                       date: new Date().toISOString().split('T')[0]
+                   };
+                   
+                   workouts.unshift(newWorkout);
+                   closeWorkoutModal();
+                   
+                   if (currentPage === 'workouts') {
+                       renderWorkouts();
+                   }
+                   
+                   showNotification('💪 Workout logged successfully!', 'success');
+               });
+           }
+
+           // Nutrition Form
+           const nutritionForm = document.getElementById('nutritionForm');
+           if (nutritionForm) {
+               nutritionForm.addEventListener('submit', function(e) {
+                   e.preventDefault();
+                   
+                   const newEntry = {
+                       id: nutritionEntries.length + 1,
+                       mealType: document.getElementById('mealType').value,
+                       foodItems: document.getElementById('foodItems').value,
+                       calories: parseInt(document.getElementById('mealCalories').value) || 0,
+                       protein: parseInt(document.getElementById('mealProtein').value) || 0,
+                       carbs: parseInt(document.getElementById('mealCarbs').value) || 0,
+                       fats: parseInt(document.getElementById('mealFats').value) || 0,
+                       date: new Date().toISOString().split('T')[0]
+                   };
+                   
+                   nutritionEntries.unshift(newEntry);
+                   closeNutritionModal();
+                   
+                   if (currentPage === 'nutrition') {
+                       renderNutrition();
+                   }
+                   
+                   showNotification('🥗 Nutrition logged successfully!', 'success');
+               });
+           }
+       });
+
+       // Utility Functions
+       function formatDate(dateString) {
+           const date = new Date(dateString);
+           return date.toLocaleDateString('en-US', { 
+               month: 'short', 
+               day: 'numeric', 
+               year: 'numeric' 
+           });
+       }
+
+       function formatWorkoutType(type) {
+           const types = {
+               strength: 'Strength Training',
+               cardio: 'Cardio Training',
+               basketball: 'Basketball Skills',
+               conditioning: 'Conditioning',
+               recovery: 'Recovery Session'
+           };
+           return types[type] || type;
+       }
+
+       // Enhanced Animations
+       function animateNumber(elementId, targetValue, suffix = '', duration = 2000) {
+           const element = document.getElementById(elementId);
+           if (!element) return;
+           
+           const startValue = 0;
+           const increment = targetValue / (duration / 16);
+           let currentValue = startValue;
+           
+           const timer = setInterval(() => {
+               currentValue += increment;
+               if (currentValue >= targetValue) {
+                   currentValue = targetValue;
+                   clearInterval(timer);
+               }
+               
+               if (suffix === '%') {
+                   element.textContent = currentValue.toFixed(1) + suffix;
+               } else if (suffix === 'h') {
+                   element.textContent = Math.floor(currentValue) + suffix;
+               } else {
+                   element.textContent = currentValue.toFixed(1);
+               }
+           }, 16);
+       }
+
+       function initializeAnimations() {
+           setTimeout(() => {
+               animateNumber('gamesPlayed', basketballStats.gamesPlayed);
+               animateNumber('pointsPerGame', basketballStats.pointsPerGame);
+               animateNumber('fieldGoalPct', basketballStats.fieldGoalPct, '%');
+               animateNumber('assistsPerGame', basketballStats.assistsPerGame);
+               animateNumber('reboundsPerGame', basketballStats.reboundsPerGame);
+               animateNumber('stealsPerGame', basketballStats.stealsPerGame);
+               animateNumber('threePointPct', basketballStats.threePointPct, '%');
+               animateNumber('plusMinus', basketballStats.plusMinus);
+           }, 500);
+       }
+
+       // Enhanced Notification System
+       function showNotification(message, type = 'info') {
+           const notification = document.createElement('div');
+           const icons = {
+               success: '✅',
+               error: '❌',
+               warning: '⚠️',
+               info: 'ℹ️'
+           };
+           
+           const colors = {
+               success: '#48bb78',
+               error: '#e53e3e',
+               warning: '#ed8936',
+               info: '#4facfe'
+           };
+           
+           notification.style.cssText = `
+               position: fixed;
+               top: 20px;
+               right: 20px;
+               background: ${colors[type]};
+               color: white;
+               padding: 1rem 1.5rem;
+               border-radius: 12px;
+               font-weight: 600;
+               z-index: 1001;
+               animation: slideInRight 0.3s ease;
+               box-shadow: var(--shadow-lg);
+               display: flex;
+               align-items: center;
+               gap: 0.5rem;
+               max-width: 400px;
+               word-wrap: break-word;
+           `;
+           
+           notification.innerHTML = `${icons[type]} ${message}`;
+           document.body.appendChild(notification);
+           
+           setTimeout(() => {
+               notification.style.animation = 'slideOutRight 0.3s ease';
+               setTimeout(() => notification.remove(), 300);
+           }, 3000);
+       }
+
+       // Real-time Updates
+       function startRealTimeUpdates() {
+           setInterval(() => {
+               const notificationDot = document.getElementById('notificationDot');
+               if (notificationDot && Math.random() > 0.8) {
+                   notificationDot.style.display = notificationDot.style.display === 'none' ? 'block' : 'none';
+               }
+               
+               // Update badge numbers
+               const chatBadge = document.getElementById('chatBadge');
+               if (chatBadge && Math.random() > 0.9) {
+                   const currentCount = parseInt(chatBadge.textContent);
+                   chatBadge.textContent = Math.max(0, currentCount + (Math.random() > 0.5 ? 1 : -1));
+               }
+           }, 10000);
+       }
+
+       // Search Functionality
+       function initializeSearch() {
+           const searchInput = document.getElementById('globalSearch');
+           if (searchInput) {
+               searchInput.addEventListener('input', function(e) {
+                   const searchTerm = e.target.value.toLowerCase();
+                   
+                   if (searchTerm.length > 2) {
+                       showNotification(`🔍 Searching for "${searchTerm}"...`, 'info');
+                       
+                       // Simulate search results
+                       setTimeout(() => {
+                           showNotification(`Found results for "${searchTerm}"`, 'success');
+                       }, 1000);
+                   }
+               });
+           }
+       }
+
+       // Initialize Application
+       document.addEventListener('DOMContentLoaded', function() {
+           initializeNavigation();
+           initializeAnimations();
+           initializeSearch();
+           startRealTimeUpdates();
+           loadRecentActivities();
+           
+           // Close modals when clicking outside
+           window.onclick = function(event) {
+               const modals = ['activityModal', 'gameModal', 'goalModal', 'workoutModal', 'nutritionModal'];
+               modals.forEach(modalId => {
+                   const modal = document.getElementById(modalId);
+                   if (event.target === modal) {
+                       modal.style.display = 'none';
+                   }
+               });
+           }
+           
+           // Handle window resize for responsive behavior
+           window.addEventListener('resize', function() {
+               if (window.innerWidth > 1024) {
+                   document.getElementById('sidebar').classList.remove('active');
+               }
+           });
+           
+           // Add keyboard shortcuts
+           document.addEventListener('keydown', function(e) {
+               if (e.altKey) {
+                   switch(e.key) {
+                       case '1':
+                           navigateToPage('overview');
+                           break;
+                       case '2':
+                           navigateToPage('training-schedule');
+                           break;
+                       case '3':
+                           navigateToPage('game-stats');
+                           break;
+                       case '4':
+                           navigateToPage('goals');
+                           break;
+                       case 'g':
+                           logGame();
+                           break;
+                       case 'w':
+                           logWorkout();
+                           break;
+                       case 'n':
+                           logNutrition();
+                           break;
+                   }
+               }
+               
+               // Close modals with Escape key
+               if (e.key === 'Escape') {
+                   const openModal = document.querySelector('.modal[style*="block"]');
+                   if (openModal) {
+                       openModal.style.display = 'none';
+                   }
+               }
+           });
+           
+           // Initialize with welcome message
+           setTimeout(() => {
+               showNotification('🏀 Welcome to your Basketball Dashboard, Mardy!', 'success');
+           }, 1000);
+       });
+   </script>
+</body>
+</html>

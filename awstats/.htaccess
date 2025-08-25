@@ -1,0 +1,5 @@
+Options -Indexes
+
+RewriteEngine On
+RewriteCond %{HTTP_HOST} ^www.inspant.com$ [NC]
+RewriteRule ^(.*)$ http://inspant.com/awstats/$1 [R=301,L]

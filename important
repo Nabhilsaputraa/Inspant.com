@@ -1,0 +1,46 @@
+|| DATE || || Tomorow Morning / Evening || || 20 Aug ||
+=======================================================================
+dasboard admin
+-------------- 
+problem:
+1. masalah di inslight tab dan artikel kayanya gak terhubung
+
+solving: 
+1. membetulkan database supaya inslight tab dan artikel terhubung 
+2. membetulkan admin_dasboard supaya artikel berfungsi
+====================================================================== 
+STATUS ========================= SOLVED
+----------------------------------------
+
+|| DATE || || Morning || || 20 Aug - 21 Aug ||
+======================================================================
+dasboard atlete
+---------------
+problem:
+1. belum terhubung ke database dan masih sample ======|
+                                                      |
+solving:                                              |======> solved
+1. mengubah dasboard atlet ke dinamis ================|
+
+problem: 
+1. dasbord ui belum maksimal
+
+solving:
+1. memaksimalkan fungsi dasboard
+======================================================================
+STATUS ========================= RUNNING
+-----------------------------------------
+
+
+|| DATE || || Night After Traing || || 21 Aug ||
+======================================================================
+profile atlete
+---------------
+problem: 
+1. masih statis
+
+solving:
+1. ubah ke php
+======================================================================
+STATUS ========================= Waiting
+-----------------------------------------

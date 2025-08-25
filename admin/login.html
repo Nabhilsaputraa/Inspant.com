@@ -1,0 +1,943 @@
+<!-- ===== FILE: login.html (COMPLETE FIXED VERSION) ===== -->
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Login - Inspant</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        /* Import Google Fonts */
+        @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap');
+
+        /* Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+            background: #0a0a0a;
+            height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+
+        /* Animated Background */
+        .animated-bg {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: 1;
+            background: linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 50%, #16213e 100%);
+            overflow: hidden;
+        }
+
+        .bg-particle {
+            position: absolute;
+            width: 4px;
+            height: 4px;
+            background: rgba(79, 172, 254, 0.6);
+            border-radius: 50%;
+            animation: float 6s ease-in-out infinite;
+        }
+
+        .bg-particle:nth-child(odd) {
+            background: rgba(0, 242, 254, 0.4);
+            animation-duration: 8s;
+        }
+
+        .bg-particle:nth-child(3n) {
+            background: rgba(255, 255, 255, 0.3);
+            animation-duration: 10s;
+        }
+
+        /* Gradient Orbs */
+        .gradient-orb {
+            position: absolute;
+            border-radius: 50%;
+            background: linear-gradient(45deg, rgba(79, 172, 254, 0.1), rgba(0, 242, 254, 0.05));
+            filter: blur(60px);
+            animation: orbFloat 12s ease-in-out infinite;
+        }
+
+        .gradient-orb:nth-child(1) {
+            width: 300px;
+            height: 300px;
+            top: 10%;
+            left: 10%;
+            animation-delay: 0s;
+        }
+
+        .gradient-orb:nth-child(2) {
+            width: 400px;
+            height: 400px;
+            bottom: 10%;
+            right: 10%;
+            animation-delay: 4s;
+            background: linear-gradient(45deg, rgba(255, 100, 200, 0.08), rgba(100, 180, 255, 0.05));
+        }
+
+        /* Login Container */
+        .login-section {
+            position: relative;
+            z-index: 10;
+            width: 100%;
+            max-width: 420px;
+            margin: 0 20px;
+        }
+
+        .login-container {
+            background: rgba(255, 255, 255, 0.03);
+            backdrop-filter: blur(20px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 24px;
+            padding: 48px 40px;
+            box-shadow: 
+                0 25px 50px rgba(0, 0, 0, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            transform: translateY(20px);
+            opacity: 0;
+            animation: slideUpFade 1s ease-out 0.3s forwards;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .login-container::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(79, 172, 254, 0.5) 50%, 
+                transparent);
+            animation: shimmer 2s ease-in-out infinite;
+        }
+
+        /* Header */
+        .login-header {
+            text-align: center;
+            margin-bottom: 32px;
+        }
+
+        .logo {
+            font-size: 2.5rem;
+            font-weight: 700;
+            color: white;
+            margin-bottom: 8px;
+            letter-spacing: -1px;
+        }
+
+        .logo span {
+            color: #4facfe;
+        }
+
+        .login-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: white;
+            margin-bottom: 8px;
+        }
+
+        .login-subtitle {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.95rem;
+            font-weight: 400;
+        }
+
+        /* Form Styles */
+        .login-form {
+            display: flex;
+            flex-direction: column;
+            gap: 24px;
+        }
+
+        .input-group {
+            position: relative;
+        }
+
+        .input-group label {
+            display: block;
+            color: rgba(255, 255, 255, 0.9);
+            font-size: 0.875rem;
+            font-weight: 500;
+            margin-bottom: 8px;
+            transition: all 0.3s ease;
+        }
+
+        .input-wrapper {
+            position: relative;
+        }
+
+        .input-icon {
+            position: absolute;
+            left: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: rgba(255, 255, 255, 0.5);
+            transition: all 0.3s ease;
+            z-index: 2;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 16px 16px 16px 48px;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            color: white;
+            font-size: 0.95rem;
+            font-weight: 400;
+            transition: all 0.3s ease;
+            outline: none;
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.4);
+        }
+
+        .form-input:focus {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: #4facfe;
+            box-shadow: 0 0 0 3px rgba(79, 172, 254, 0.1);
+            transform: translateY(-1px);
+        }
+
+        .form-input:focus + .input-icon {
+            color: #4facfe;
+        }
+
+        /* Password Toggle */
+        .password-toggle {
+            position: absolute;
+            right: 16px;
+            top: 50%;
+            transform: translateY(-50%);
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.5);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            z-index: 2;
+        }
+
+        .password-toggle:hover {
+            color: #4facfe;
+        }
+
+        /* Remember Me */
+        .remember-group {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-top: -8px;
+        }
+
+        .remember-checkbox {
+            width: 16px;
+            height: 16px;
+            accent-color: #4facfe;
+        }
+
+        .remember-label {
+            font-size: 0.875rem;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+        }
+
+        /* Login Button */
+        .login-button {
+            width: 100%;
+            padding: 16px;
+            background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
+            border: none;
+            border-radius: 12px;
+            color: #0a0a0a;
+            font-size: 1rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+            margin-top: 8px;
+        }
+
+        .login-button:disabled {
+            opacity: 0.6;
+            cursor: not-allowed;
+        }
+
+        .login-button::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, 
+                transparent, 
+                rgba(255, 255, 255, 0.2), 
+                transparent);
+            transition: left 0.5s ease;
+        }
+
+        .login-button:not(:disabled):hover::before {
+            left: 100%;
+        }
+
+        .login-button:not(:disabled):hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 25px rgba(79, 172, 254, 0.3);
+        }
+
+        .login-button:active {
+            transform: translateY(0);
+        }
+
+        /* Additional Links */
+        .form-footer {
+            text-align: center;
+            margin-top: 24px;
+        }
+
+        .forgot-password {
+            color: rgba(255, 255, 255, 0.7);
+            text-decoration: none;
+            font-size: 0.875rem;
+            transition: all 0.3s ease;
+            margin-bottom: 16px;
+            display: inline-block;
+        }
+
+        .forgot-password:hover {
+            color: #4facfe;
+        }
+
+        .register-link {
+            color: rgba(255, 255, 255, 0.7);
+            font-size: 0.95rem;
+        }
+
+        .register-link a {
+            color: #4facfe;
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .register-link a:hover {
+            color: #00f2fe;
+        }
+
+        /* Loading State */
+        .login-button.loading {
+            pointer-events: none;
+            opacity: 0.8;
+        }
+
+        .login-button.loading::after {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
+            margin: -10px 0 0 -10px;
+            border: 2px solid transparent;
+            border-top: 2px solid #0a0a0a;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        /* Success/Error Messages */
+        .message {
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.875rem;
+            display: none;
+            transition: all 0.3s ease;
+            line-height: 1.5;
+        }
+
+        .message.success {
+            background: rgba(34, 197, 94, 0.15);
+            border: 1px solid rgba(34, 197, 94, 0.3);
+            color: #22c55e;
+        }
+
+        .message.error {
+            background: rgba(239, 68, 68, 0.15);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            color: #ef4444;
+        }
+
+        .message.warning {
+            background: rgba(251, 146, 60, 0.15);
+            border: 1px solid rgba(251, 146, 60, 0.3);
+            color: #fb923c;
+        }
+
+        /* Login Attempts Warning */
+        .attempts-warning {
+            background: rgba(251, 146, 60, 0.15);
+            border: 1px solid rgba(251, 146, 60, 0.3);
+            color: #fb923c;
+            padding: 12px 16px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            font-size: 0.875rem;
+            display: none;
+            line-height: 1.5;
+        }
+
+        /* Animations */
+        @keyframes slideUpFade {
+            from {
+                opacity: 0;
+                transform: translateY(30px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes float {
+            0%, 100% {
+                transform: translateY(0px) translateX(0px);
+                opacity: 0;
+            }
+            10% {
+                opacity: 1;
+            }
+            50% {
+                transform: translateY(-100px) translateX(50px);
+                opacity: 1;
+            }
+            90% {
+                opacity: 1;
+            }
+        }
+
+        @keyframes orbFloat {
+            0%, 100% {
+                transform: translate(0, 0) scale(1);
+            }
+            33% {
+                transform: translate(30px, -30px) scale(1.1);
+            }
+            66% {
+                transform: translate(-20px, 20px) scale(0.9);
+            }
+        }
+
+        @keyframes shimmer {
+            0% {
+                opacity: 0;
+                transform: translateX(-100%);
+            }
+            50% {
+                opacity: 1;
+            }
+            100% {
+                opacity: 0;
+                transform: translateX(100%);
+            }
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        /* Responsive Design */
+        @media (max-width: 768px) {
+            .login-container {
+                padding: 36px 28px;
+                margin: 0 16px;
+                border-radius: 20px;
+            }
+
+            .logo {
+                font-size: 2.2rem;
+            }
+
+            .login-title {
+                font-size: 1.3rem;
+            }
+
+            .form-input {
+                padding: 14px 14px 14px 44px;
+            }
+
+            .login-button {
+                padding: 14px;
+            }
+        }
+
+        @media (max-width: 480px) {
+            .login-container {
+                padding: 32px 24px;
+            }
+
+            .logo {
+                font-size: 2rem;
+            }
+
+            .login-title {
+                font-size: 1.2rem;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="animated-bg">
+        <div class="gradient-orb"></div>
+        <div class="gradient-orb"></div>
+    </div>
+
+    <section class="login-section">
+        <div class="login-container">
+            <div class="login-header">
+                <h1 class="logo">ins<span>pant</span></h1>
+                <h2 class="login-title">Selamat Datang Kembali</h2>
+                <p class="login-subtitle">Masuk ke akun Anda untuk melanjutkan</p>
+            </div>
+
+            <div id="message" class="message"></div>
+            <div id="attemptsWarning" class="attempts-warning"></div>
+
+            <form class="login-form" id="loginForm">
+                <div class="input-group">
+                    <label for="username">Username atau Email</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-user input-icon"></i>
+                        <input 
+                            type="text" 
+                            id="username" 
+                            name="username" 
+                            class="form-input" 
+                            placeholder="Masukkan username atau email" 
+                            required
+                            autocomplete="username"
+                        >
+                    </div>
+                </div>
+
+                <div class="input-group">
+                    <label for="password">Kata Sandi</label>
+                    <div class="input-wrapper">
+                        <i class="fas fa-lock input-icon"></i>
+                        <input 
+                            type="password" 
+                            id="password" 
+                            name="password" 
+                            class="form-input" 
+                            placeholder="Masukkan kata sandi Anda" 
+                            required
+                            autocomplete="current-password"
+                        >
+                        <button type="button" class="password-toggle" id="togglePassword">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="remember-group">
+                    <input type="checkbox" id="remember" name="remember" class="remember-checkbox">
+                    <label for="remember" class="remember-label">Ingat saya</label>
+                </div>
+
+                <button type="submit" class="login-button" id="loginBtn">
+                    Masuk
+                </button>
+
+                <div class="form-footer">
+                    <a href="#" class="forgot-password">Lupa kata sandi?</a>
+                    <p class="register-link">
+                        Belum punya akun? <a href="register.html">Daftar sekarang</a>
+                    </p>
+                </div>
+            </form>
+        </div>
+    </section>
+
+    <script>
+        // Global variables
+        let loginAttempts = 0;
+        const maxAttempts = 5;
+        let isSubmitting = false;
+
+        // API Configuration - FIXED PATH
+        const API_CONFIG = {
+            baseURL: 'api/', // Path yang benar sesuai struktur folder Anda
+            endpoints: {
+                login: 'auth/login.php',
+                check: 'auth/check.php',
+                logout: 'auth/logout.php'
+            }
+        };
+
+        // Create floating particles
+        function createParticles() {
+            const bgElement = document.querySelector('.animated-bg');
+            if (!bgElement) return;
+            
+            const particleCount = 15;
+            for (let i = 0; i < particleCount; i++) {
+                const particle = document.createElement('div');
+                particle.className = 'bg-particle';
+                particle.style.left = Math.random() * 100 + '%';
+                particle.style.top = Math.random() * 100 + '%';
+                particle.style.animationDelay = Math.random() * 6 + 's';
+                bgElement.appendChild(particle);
+            }
+        }
+
+        // Password toggle functionality
+        function setupPasswordToggle() {
+            const toggleBtn = document.getElementById('togglePassword');
+            if (!toggleBtn) return;
+            
+            toggleBtn.addEventListener('click', function() {
+                const passwordInput = document.getElementById('password');
+                const toggleIcon = this.querySelector('i');
+                
+                if (passwordInput.type === 'password') {
+                    passwordInput.type = 'text';
+                    toggleIcon.classList.remove('fa-eye');
+                    toggleIcon.classList.add('fa-eye-slash');
+                } else {
+                    passwordInput.type = 'password';
+                    toggleIcon.classList.remove('fa-eye-slash');
+                    toggleIcon.classList.add('fa-eye');
+                }
+            });
+        }
+
+        // Form validation
+        function validateForm() {
+            const username = document.getElementById('username')?.value.trim() || '';
+            const password = document.getElementById('password')?.value || '';
+            const loginBtn = document.getElementById('loginBtn');
+            
+            if (!loginBtn) return false;
+
+            const isValid = username.length >= 3 && password.length >= 6;
+            loginBtn.disabled = !isValid;
+            return isValid;
+        }
+
+        // Show attempts warning
+        function showAttemptsWarning(remaining) {
+            const warningDiv = document.getElementById('attemptsWarning');
+            if (!warningDiv) return;
+            
+            warningDiv.textContent = `Peringatan: ${remaining} percobaan login tersisa sebelum akun dikunci.`;
+            warningDiv.style.display = 'block';
+        }
+
+        // Show message function
+        function showMessage(text, type) {
+            const messageDiv = document.getElementById('message');
+            if (!messageDiv) return;
+            
+            // Clear previous classes
+            messageDiv.className = 'message';
+            
+            // Add type class
+            messageDiv.classList.add(type);
+            
+            // Set message text
+            messageDiv.innerHTML = text; // Menggunakan innerHTML untuk memungkinkan formatting
+            
+            // Show the message
+            messageDiv.style.display = 'block';
+            
+            // Auto hide success messages after 5 seconds
+            if (type === 'success') {
+                setTimeout(() => {
+                    messageDiv.style.display = 'none';
+                }, 5000);
+            }
+        }
+
+        // Hide messages
+        function hideMessages() {
+            const messageDiv = document.getElementById('message');
+            const warningDiv = document.getElementById('attemptsWarning');
+            
+            if (messageDiv) messageDiv.style.display = 'none';
+            if (warningDiv) warningDiv.style.display = 'none';
+        }
+
+        // Login API call - FIXED
+        async function loginAPI(formData) {
+            const url = API_CONFIG.baseURL + API_CONFIG.endpoints.login;
+            console.log('Calling API URL:', url); // Debug log
+            
+            const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Accept': 'application/json'
+                },
+                credentials: 'include',
+                body: JSON.stringify(formData)
+            });
+
+            console.log('Response status:', response.status); // Debug log
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                console.log('Error response:', errorText); // Debug log
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
+
+            const result = await response.json();
+            console.log('API Response:', result); // Debug log
+            return result;
+        }
+
+        // Check if user is already logged in
+        async function checkExistingAuth() {
+            try {
+                const response = await fetch(API_CONFIG.baseURL + API_CONFIG.endpoints.check, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const result = await response.json();
+                    if (result.success && result.data?.user) {
+                        window.location.href = result.data.redirect || 'dashboard.html';
+                        return true;
+                    }
+                }
+            } catch (error) {
+                console.log('Auth check failed:', error.message);
+            }
+            return false;
+        }
+
+        // Handle login form submission - FIXED
+        // Handle login form submission - FIXED
+        async function handleLogin(e) {
+            e.preventDefault();
+            
+            if (isSubmitting) return;
+            isSubmitting = true;
+
+            try {
+                const loginBtn = document.getElementById('loginBtn');
+                
+                // Hide previous messages
+                hideMessages();
+                
+                // Show loading state
+                loginBtn.classList.add('loading');
+                loginBtn.textContent = '';
+                loginBtn.disabled = true;
+
+                // Collect form data
+                const formData = {
+                    username: document.getElementById('username').value.trim(),
+                    password: document.getElementById('password').value,
+                    remember: document.getElementById('remember').checked
+                };
+
+                // Basic validation
+                if (!formData.username || !formData.password) {
+                    throw new Error('Username dan password wajib diisi');
+                }
+
+                if (formData.username.length < 3) {
+                    throw new Error('Username minimal 3 karakter');
+                }
+
+                if (formData.password.length < 6) {
+                    throw new Error('Password minimal 6 karakter');
+                }
+
+                // Call login API
+                const response = await fetch(API_CONFIG.baseURL + API_CONFIG.endpoints.login, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(formData)
+                });
+
+                // Remove loading state
+                loginBtn.classList.remove('loading');
+                loginBtn.textContent = 'Masuk';
+                
+                const result = await response.json();
+                
+                if (response.ok && result.success) {
+                    showMessage(result.message || 'Login berhasil', 'success');
+                    
+                    // Reset attempts counter
+                    loginAttempts = 0;
+                    
+                    // Redirect to dashboard
+                    setTimeout(() => {
+                        window.location.href = result.data?.redirect || 'dashboard.html';
+                    }, 1000);
+                    
+                } else {
+                    // Handle login failure
+                    loginAttempts++;
+                    
+                    // Determine error message based on response status
+                    let errorMessage;
+                    if (response.status === 429) {
+                        errorMessage = 'Terlalu banyak percobaan login. Silakan coba lagi nanti.';
+                    } else if (response.status === 401) {
+                        errorMessage = result.message || 'Username atau password salah';
+                    } else if (response.status === 400) {
+                        errorMessage = result.message || 'Data yang dikirim tidak valid';
+                    } else {
+                        errorMessage = result.message || 'Terjadi kesalahan saat login';
+                    }
+                    
+                    showMessage(errorMessage, 'error');
+                    
+                    // Show warning if approaching limit
+                    const remaining = maxAttempts - loginAttempts;
+                    if (remaining > 0 && remaining <= 2) {
+                        showAttemptsWarning(remaining);
+                    }
+                    
+                    // Clear password field
+                    document.getElementById('password').value = '';
+                    validateForm();
+                    loginBtn.disabled = false;
+                }    
+
+            } catch (error) {
+                console.error('Login error:', error);
+                
+                // Handle errors
+                const loginBtn = document.getElementById('loginBtn');
+                loginBtn.classList.remove('loading');
+                loginBtn.textContent = 'Masuk';
+                loginBtn.disabled = false;
+                
+                let errorMessage = 'Terjadi kesalahan koneksi. Silakan coba lagi.';
+                
+                if (error.message.includes('Failed to fetch')) {
+                    errorMessage = 'Tidak dapat terhubung ke server. Periksa koneksi internet Anda.';
+                } else if (error.message) {
+                    errorMessage = error.message;
+                }
+                
+                showMessage(errorMessage, 'error');
+                validateForm();
+                
+            } finally {
+                isSubmitting = false;
+            }
+        }
+
+        // Input animations and event handlers
+        function setupInputAnimations() {
+            document.querySelectorAll('.form-input').forEach(input => {
+                input.addEventListener('focus', function() {
+                    if (this.parentElement) {
+                        this.parentElement.style.transform = 'translateY(-2px)';
+                    }
+                });
+                
+                input.addEventListener('blur', function() {
+                    if (this.parentElement) {
+                        this.parentElement.style.transform = 'translateY(0)';
+                    }
+                });
+
+                input.addEventListener('input', validateForm);
+            });
+        }
+
+        // Keyboard navigation
+        function setupKeyboardNavigation() {
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' && document.activeElement?.classList.contains('form-input')) {
+                    const inputs = ['username', 'password'];
+                    const currentIndex = inputs.indexOf(document.activeElement.id);
+                    
+                    if (currentIndex >= 0 && currentIndex < inputs.length - 1) {
+                        e.preventDefault();
+                        const nextInput = document.getElementById(inputs[currentIndex + 1]);
+                        if (nextInput) nextInput.focus();
+                    }
+                }
+            });
+        }
+        
+        async function checkDatabaseSetup() {
+            try {
+                const response = await fetch('api/auth/test.php');
+                const result = await response.json();
+                
+                if (!result.success) {
+                    showMessage('Database belum disetup. Jalankan create_database.php terlebih dahulu.', 'error');
+                    return false;
+                }
+                return true;
+            } catch (error) {
+                showMessage('Tidak dapat terhubung ke server. Pastikan XAMPP sudah running.', 'error');
+                return false;
+            }
+        }
+
+        // Initialize application
+        async function initializeApp() {
+            // Check database setup first
+            const dbReady = await checkDatabaseSetup();
+            if (!dbReady) return;
+
+            // Setup UI components
+            createParticles();
+            setupPasswordToggle();
+            setupInputAnimations();
+            setupKeyboardNavigation();
+            validateForm();
+
+            // Setup form submission
+            const loginForm = document.getElementById('loginForm');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleLogin);
+            }
+
+            // Focus on username field
+            setTimeout(() => {
+                const usernameField = document.getElementById('username');
+                if (usernameField) usernameField.focus();
+            }, 500);
+        }
+
+        // Start application when DOM is loaded
+        document.addEventListener('DOMContentLoaded', initializeApp);
+
+        // Handle browser back button
+        window.addEventListener('popstate', function() {
+            checkExistingAuth();
+        });
+    </script>
+</body>
+</html>

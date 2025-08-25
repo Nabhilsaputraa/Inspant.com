@@ -1,0 +1,431 @@
+AWSTATS DATA FILE 7.9 (build 20230108)
+# If you remove this file, all statistics for date 202508 will be lost/reset.
+# Last config file used to build this data file was /home/inspantc/domains/inspant.com/awstats/.data/awstats.inspant.com.conf.
+
+# Position (offset in bytes) in this file for beginning of each section for
+# direct I/O access. If you made changes somewhere in this file, you should
+# also remove completely the MAP section (AWStats will rewrite it at next
+# update).
+BEGIN_MAP 30
+POS_GENERAL 2134                
+POS_TIME 2812                
+POS_VISITOR 9220                
+POS_DAY 11266               
+POS_DOMAIN 3510                
+POS_LOGIN 3739                
+POS_ROBOT 3894                
+POS_WORMS 4387                
+POS_EMAILSENDER 4518                
+POS_EMAILRECEIVER 4661                
+POS_SESSION 11478               
+POS_FILESIZE 11866               
+POS_SIDER 11684               
+POS_FILETYPES 4796                
+POS_DOWNLOADS 4930                
+POS_OS 4978                
+POS_BROWSER 5171                
+POS_SCREENSIZE 5823                
+POS_UNKNOWNREFERER 5897                
+POS_UNKNOWNREFERERBROWSER 6095                
+POS_ORIGIN 6205                
+POS_SEREFERRALS 6340                
+POS_PAGEREFS 6501                
+POS_SEARCHWORDS 6705                
+POS_KEYWORDS 6857                
+POS_MISC 2476                
+POS_ERRORS 6916                
+POS_CLUSTER 3595                
+POS_SIDER_404 7107                
+POS_SIDER_400 7025                
+POS_SIDER_403 8911                
+END_MAP
+
+# LastLine    = Date of last record processed - Last record line number in last log - Last record offset in last log - Last record signature value
+# FirstTime   = Date of first visit for history file
+# LastTime    = Date of last visit for history file
+# LastUpdate  = Date of last update - Nb of parsed records - Nb of parsed old records - Nb of parsed new records - Nb of parsed corrupted - Nb of parsed dropped
+# TotalVisits = Number of visits
+# TotalUnique = Number of unique visitors
+# MonthHostsKnown   = Number of hosts known
+# MonthHostsUnKnown = Number of hosts unknown
+BEGIN_GENERAL 8
+LastLine 20250807023644 99 15425 5378819891922
+FirstTime 20250801012809
+LastTime 20250807012424
+LastUpdate 20250807023717 99 0 99 0 0
+TotalVisits 56                  
+TotalUnique 51                  
+MonthHostsKnown 0                   
+MonthHostsUnknown 52                  
+END_GENERAL
+
+# Misc ID - Pages - Hits - Bandwidth
+BEGIN_MISC 10
+TotalMisc 0 0 0
+JavaEnabled 0 0 0
+FlashSupport 0 0 0
+DirectorSupport 0 0 0
+WindowsMediaPlayerSupport 0 0 0
+JavascriptDisabled 0 0 0
+PDFSupport 0 0 0
+RealPlayerSupport 0 0 0
+AddToFavourites 0 0 0
+QuickTimeSupport 0 0 0
+END_MISC
+
+# Hour - Pages - Hits - Bandwidth - Not viewed Pages - Not viewed Hits - Not viewed Bandwidth
+BEGIN_TIME 24
+0 4 4 12023 23 26 697185
+1 7 7 17234 25 30 48391
+2 11 13 27003 21 34 46716
+3 5 5 8465 23 28 50797
+4 1 1 1909 20 23 64946
+5 5 7 19709 17 36 58205
+6 0 0 0 25 31 80586
+7 3 5 6190 13 14 29556
+8 1 1 1872 17 22 40758
+9 3 7 11724 22 28 46443
+10 4 7 14832 22 31 61487
+11 1 1 1872 16 19 36375
+12 6 8 11612 36 38 61552
+13 0 0 0 24 26 42716
+14 5 7 11877 12 18 22462
+15 2 5 9896 12 13 21991
+16 2 2 3048 16 18 32584
+17 0 0 0 25 27 45194
+18 3 5 6294 17 19 30470
+19 54 55 15808 26 45 35676
+20 26 31 26388 17 29 33421
+21 3 3 5193 14 17 30587
+22 2 4 7798 15 15 33438
+23 0 0 0 18 22 34589
+END_TIME
+
+# Domain - Pages - Hits - Bandwidth
+# The 10 first Pages must be first (order not required for others)
+BEGIN_DOMAIN 1
+ip 148 178 220747
+END_DOMAIN
+
+# Cluster ID - Pages - Hits - Bandwidth
+BEGIN_CLUSTER 0
+END_CLUSTER
+
+# Login - Pages - Hits - Bandwidth - Last visit
+# The 10 first Pages must be first (order not required for others)
+BEGIN_LOGIN 0
+END_LOGIN
+
+# Robot ID - Hits - Bandwidth - Last visit - Hits on robots.txt
+# The 10 first Hits must be first (order not required for others)
+BEGIN_ROBOT 10
+python 293 566545 20250807023644 0
+bingbot/ 19 29730 20250807004428 0
+facebook 15 75587 20250806223726 0
+dataprovider\.com 9 22757 20250805115358 0
+Googlebot/ 8 15492 20250804045812 0
+AhrefsBot/ 5 650513 20250806235958 0
+ning 2 25031 20250806030628 0
+no_user_agent 2 4900 20250804040857 0
+Go\-http\-client/ 1 1731 20250805120107 0
+curl 1 1872 20250805090423 0
+END_ROBOT
+
+# Worm ID - Hits - Bandwidth - Last visit
+# The 5 first Hits must be first (order not required for others)
+BEGIN_WORMS 0
+END_WORMS
+
+# EMail - Hits - Bandwidth - Last visit
+# The 20 first Hits must be first (order not required for others)
+BEGIN_EMAILSENDER 0
+END_EMAILSENDER
+
+# EMail - Hits - Bandwidth - Last visit
+# The 20 first hits must be first (order not required for others)
+BEGIN_EMAILRECEIVER 0
+END_EMAILRECEIVER
+
+# Files type - Hits - Bandwidth - Bandwidth without compression - Bandwidth after compression
+BEGIN_FILETYPES 4
+js 17 19895 0 0
+php 103 134306 0 0
+html 45 33033 0 0
+css 13 33513 0 0
+END_FILETYPES
+
+# Downloads - Hits - Bandwidth
+BEGIN_DOWNLOADS 0
+END_DOWNLOADS
+
+# OS ID - Hits
+BEGIN_OS ID - Hits - Pages 10
+win7 3 3
+ios_iphone 19 9
+win10 115 101
+macos12 7 7
+android10 4 4
+android12 4 2
+Unknown 2 2
+win8.1 1 1
+linux 18 16
+macosx15 5 3
+END_OS
+
+# Browser ID - Hits - Pages
+BEGIN_BROWSER 31
+firefox120.0 1 1
+safari5.0.4 3 3
+chrome138.0.7204.23 3 1
+firefox70.0 1 1
+chrome114.0.0.0 5 3
+firefox127.0 1 1
+mozilla 1 1
+chrome136.0.0.0 1 1
+chrome83.0.4103.97 1 1
+chrome137.0.0.0 6 6
+chrome110.0.0.0 1 1
+chrome44.0.2403.157 2 2
+chrome66.0.3359.181 7 7
+chrome80.0.3987.162 1 1
+chrome26.0.1410.63 2 2
+Unknown 1 1
+chrome94.0.4606.81 1 1
+chrome78.0.3904.108 3 3
+chrome138.0.0.0 12 5
+firefox137.0 2 2
+chrome74.0.3729.169 1 1
+chrome105.0.0.0 1 1
+chrome132.0.0.0 3 3
+safari17.0 15 7
+firefox141.0 83 78
+chrome104.0.0.0 2 2
+safari15.4 3 1
+iphone 1 1
+chrome131.0.0.0 9 5
+safari17.3.2 1 1
+opera89.0.4447.51 4 4
+END_BROWSER
+
+# Screen size - Hits
+BEGIN_SCREENSIZE 0
+END_SCREENSIZE
+
+# Unknown referer OS - Last visit date
+BEGIN_UNKNOWNREFERER 2
+okhttp/4.9.2 20250804092155
+Mozilla/5.0_(compatible;_vuhuvRBT/2.0;__https://vuhuv.com/rbt.html) 20250801204030
+END_UNKNOWNREFERER
+
+# Unknown referer Browser - Last visit date
+BEGIN_UNKNOWNREFERERBROWSER 1
+okhttp/4.9.2 20250804092155
+END_UNKNOWNREFERERBROWSER
+
+# Origin - Pages - Hits 
+BEGIN_ORIGIN 6
+From0 62 68
+From1 0 0
+From2 3 3
+From3 3 3
+From4 80 104
+From5 0 0
+END_ORIGIN
+
+# Search engine referers ID - Pages - Hits
+BEGIN_SEREFERRALS 1
+www_bing_com 3 3
+END_SEREFERRALS
+
+# External page referers - Pages - Hits
+# The 10 first Pages must be first (order not required for others)
+BEGIN_PAGEREFS 2
+https://client.rumahhosting.com 2 2
+https://x7x.top 1 1
+END_PAGEREFS
+
+# Search keyphrases - Number of search
+# The 10 first number of search must be first (order not required for others)
+BEGIN_SEARCHWORDS 0
+END_SEARCHWORDS
+
+# Search keywords - Number of search
+# The 10 first number of search must be first (order not required for others)
+BEGIN_KEYWORDS 0
+END_KEYWORDS
+
+# Errors - Hits - Bandwidth
+BEGIN_ERRORS 3
+500 9 0
+302 1 138
+404 190 291829
+END_ERRORS
+
+# URL with 400 errors - Hits - Last URL referrer
+BEGIN_SIDER_400 0
+END_SIDER_400
+
+# URL with 404 errors - Hits - Last URL referrer
+BEGIN_SIDER_404 57
+/robots.txt 40 -
+/test/wp-includes/wlwmanifest.xml 1 -
+/.well-known/security.txt 2 -
+/xmlrpc.php 2 -
+/php/login.php 3 -
+/humans.txt 1 -
+/setting/update_review.php 2 -
+/test/wp-admin/install.php 1 -
+/cms/wp-includes/wlwmanifest.xml 1 -
+/login.php 1 -
+/shop/wp-includes/wlwmanifest.xml 1 -
+/test/wp-admin/setup-config.php 1 -
+/old/wp-admin/install.php 1 -
+/blog/wp-admin/install.php 1 -
+/web/wp-includes/wlwmanifest.xml 1 -
+/wp2/wp-includes/wlwmanifest.xml 1 -
+/shop/wp-admin/setup-config.php 1 -
+/assets/pages/login.html 1 https://inspant.com/
+/wp/wp-includes/wlwmanifest.xml 1 -
+/shop/wp-admin/install.php 1 -
+/sitemap.xml 1 -
+/wp-admin/setup-config.php 39 -
+/llms.txt 1 -
+/blog/wp-includes/wlwmanifest.xml 1 -
+/wordpress/wp-admin/install.php 1 -
+/sito/wp-includes/wlwmanifest.xml 1 -
+/old/wp-admin/setup-config.php 1 -
+/wp/wp-admin/setup-config.php 1 -
+/wp-admin/install.php 1 -
+/pages/review_page.php 3 -
+/setting/auth.php 1 -
+/setting/update_reply.php 1 -
+/php/review.php 3 -
+/security.txt 1 -
+/setting/checkin.php 1 -
+/news/wp-includes/wlwmanifest.xml 1 -
+/favicon.png 1 -
+/wp-includes/wlwmanifest.xml 1 -
+/meta.json 2 -
+/wp1/wp-includes/wlwmanifest.xml 1 -
+/pages/review_page.html 2 -
+/website/wp-includes/wlwmanifest.xml 1 -
+/2019/wp-includes/wlwmanifest.xml 1 -
+/blog/wp-admin/setup-config.php 1 -
+/pages/login.php 2 https://inspant.com/pages/login.html
+/new/wp-admin/setup-config.php 1 -
+/media/wp-includes/wlwmanifest.xml 1 -
+/site/wp-includes/wlwmanifest.xml 1 -
+/wordpress/wp-admin/setup-config.php 40 -
+/wordpress/wp-includes/wlwmanifest.xml 1 -
+/new/wp-admin/install.php 1 -
+/2018/wp-includes/wlwmanifest.xml 1 -
+/wp/wp-admin/install.php 1 -
+/index.php 2 -
+/index.html 2 -
+/php/register.php 4 -
+/ads.txt 1 -
+END_SIDER_404
+
+# URL with 403 errors - Hits - Last URL referrer
+BEGIN_SIDER_403 0
+END_SIDER_403
+
+# Host - Pages - Hits - Bandwidth - Last visit date - [Start date of last visit] - [Last page of last visit]
+# [Start date of last visit] and [Last page of last visit] are saved only if session is not finished
+# The 10 first Hits must be first (order not required for others)
+BEGIN_VISITOR 52
+125.164.19.214 23 26 11051 20250801202210
+125.164.21.160 11 12 10138 20250801202324
+125.164.17.16 10 11 1836 20250801200633
+125.164.25.69 10 10 3065 20250801194304
+125.164.20.248 7 8 5570 20250801202316
+125.164.16.148 7 8 1790 20250801201502
+125.164.18.85 7 9 6525 20250801201057
+84.32.41.136 4 4 5412 20250804020558
+148.113.202.94 4 4 7472 20250806200243
+125.164.24.108 3 3 2851 20250804143659
+125.164.16.222 1 1 0 20250801124209
+93.159.230.84 1 1 1909 20250805183729
+125.164.24.3 2 3 5264 20250801202120
+114.79.54.212 2 4 8901 20250802154807
+3.226.249.229 1 1 1731 20250805224326
+114.79.55.13 1 3 7170 20250802145509
+171.247.177.17 1 3 4391 20250803055431
+98.64.96.183 1 1 3257 20250806102211
+34.172.247.177 3 3 13587 20250805052407
+4.43.184.113 2 2 3462 20250803125529
+3.236.162.94 1 1 1731 20250806054257
+144.217.135.238 1 1 4529 20250805101110
+5.133.192.166 1 1 1909 20250803044434
+16.79.69.175 3 3 10151 20250804002751
+188.126.89.77 1 1 1731 20250804023054
+194.9.191.21 1 1 1731 20250801204030
+114.79.54.44 0 1 995 
+64.227.156.224 2 2 3640 20250803035844
+35.89.12.54 2 2 3640 20250805032416
+35.86.208.86 1 3 5949 20250802094311
+154.213.195.200 2 2 3048 20250801165755
+159.89.183.113 1 1 1185 20250802032615
+54.244.15.49 2 2 8223 20250801012811
+88.218.0.154 1 1 1856 20250801125312
+164.90.241.135 1 3 6220 20250804023333
+134.209.44.248 2 2 3640 20250807012424
+64.227.110.90 2 2 3640 20250805011343
+125.164.22.105 3 3 215 20250801192931
+69.167.31.161 1 1 1731 20250801214138
+44.200.206.225 2 4 5775 20250804092239
+44.244.65.45 2 2 3640 20250802024121
+34.123.28.109 1 1 1872 20250807003807
+43.135.179.137 1 3 6067 20250805220221
+23.27.145.77 1 1 1909 20250804123014
+52.40.93.173 1 1 1909 20250802205234
+146.70.108.174 1 1 1731 20250801214138
+23.106.193.42 2 4 4318 20250804071411
+154.90.48.114 2 2 3462 20250804023056
+125.164.19.99 2 5 7046 20250806101844
+44.249.111.97 1 1 1731 20250804011029
+34.13.150.149 1 1 1872 20250805081326
+104.131.50.50 2 2 8269 20250801022944
+END_VISITOR
+
+# Date - Pages - Hits - Bandwidth - Visits
+BEGIN_DAY 7
+20250801 93 103 75630 20
+20250802 8 15 29749 6
+20250803 7 9 15274 5
+20250804 19 25 41829 10
+20250805 13 15 38847 9
+20250806 5 8 13906 4
+20250807 3 3 5512 2
+END_DAY
+
+# Session range - Number of visits
+BEGIN_SESSION 7
+2mn-5mn 1
+15mn-30mn 1
+30s-2mn 1
+1h+ 4
+0s-30s 46
+30mn-1h 2
+5mn-15mn 1
+END_SESSION
+
+# URL - Pages - Bandwidth - Entry - Exit
+# The 10 first Pages must be first (order not required for others)
+BEGIN_SIDER 4
+/ 67 131039 48 41
+/pages/register.html 38 26915 4 10
+/setting/auth/register.php 36 3267 2 4
+/pages/login.html 7 6118 2 1
+END_SIDER
+
+# Payload Range - Payload Frequency
+BEGIN_FILESIZE 7
+44-100 20
+0-44 35
+100-500 21
+5K+ 4
+2K-5K 80
+1K-2K 596
+500-1K 31
+END_FILESIZE
