@@ -91,6 +91,28 @@ function initializeTables($pdo) {
             INDEX idx_code (invitation_code)
         )",
         
+        // TAMBAHKAN TABEL INI - YANG HILANG!
+        "CREATE TABLE IF NOT EXISTS athlete_profiles (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            user_id INT NOT NULL,
+            coach_id INT NULL,
+            sport VARCHAR(100) DEFAULT 'General',
+            position VARCHAR(100) NULL,
+            team_name VARCHAR(100) NULL,
+            height DECIMAL(5,2) NULL,
+            weight DECIMAL(5,2) NULL,
+            blood_type VARCHAR(5) NULL,
+            medical_conditions TEXT NULL,
+            is_active BOOLEAN DEFAULT 1,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+            FOREIGN KEY (coach_id) REFERENCES users(id) ON DELETE SET NULL,
+            INDEX idx_user (user_id),
+            INDEX idx_coach (coach_id),
+            INDEX idx_active (is_active)
+        )",
+        
         "CREATE TABLE IF NOT EXISTS training_results (
             id INT AUTO_INCREMENT PRIMARY KEY,
             training_schedule_id INT NOT NULL,
@@ -159,6 +181,33 @@ function sanitizeloc($input, $type = 'string') {
     }
 }
 
+function ensureAthleteProfiles($pdo, $coachId) {
+    try {
+        // Create profiles for all accepted invitations that don't have profiles
+        $stmt = $pdo->prepare("
+            INSERT INTO athlete_profiles (user_id, coach_id, sport, is_active, created_at)
+            SELECT DISTINCT i.athlete_id, i.coach_id, 'General', 1, NOW()
+            FROM coach_athlete_invitations i
+            LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+            WHERE i.coach_id = ? 
+            AND i.status = 'accepted' 
+            AND i.athlete_id IS NOT NULL
+            AND ap.id IS NULL
+        ");
+        $result = $stmt->execute([$coachId]);
+        $created = $stmt->rowCount();
+        
+        if ($created > 0) {
+            error_log("Created $created missing athlete profiles for coach $coachId");
+        }
+        
+        return $created;
+    } catch (Exception $e) {
+        error_log("Error ensuring athlete profiles: " . $e->getMessage());
+        return 0;
+    }
+}
+
 function jsresloc($success, $message, $data = null) {
     header('Content-Type: application/json');
     $response = ['success' => $success, 'message' => $message];
@@ -167,6 +216,34 @@ function jsresloc($success, $message, $data = null) {
     }
     echo json_encode($response, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+// Tambahkan setelah helper functions
+function debugAthleteData($pdo, $coachId) {
+    error_log("=== DEBUG ATHLETE DATA ===");
+    
+    // Check invitations
+    $stmt = $pdo->prepare("SELECT * FROM coach_athlete_invitations WHERE coach_id = ? ORDER BY created_at DESC");
+    $stmt->execute([$coachId]);
+    $invitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Invitations: " . json_encode($invitations));
+    
+    // Check athlete profiles
+    $stmt = $pdo->prepare("SELECT * FROM athlete_profiles WHERE coach_id = ? AND is_active = 1");
+    $stmt->execute([$coachId]);
+    $profiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Athlete profiles: " . json_encode($profiles));
+    
+    // Check users
+    $stmt = $pdo->query("SELECT id, username, full_name, role FROM users WHERE role = 'athlete'");
+    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Athlete users: " . json_encode($users));
+    
+    error_log("=== END DEBUG ===");
+}
+
+function syncAthleteProfiles($pdo, $coachId) {
+    return ensureAthleteProfiles($pdo, $coachId);
 }
 
 // AJAX Handler
@@ -195,13 +272,15 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 
                 // Check if athlete exists
-                $stmt = $pdo->prepare("SELECT id, full_name FROM users WHERE username = ? AND role = 'athlete'");
+                $stmt = $pdo->prepare("SELECT id, full_name, username FROM users WHERE username = ? AND role = 'athlete'");
                 $stmt->execute([$username]);
                 $athlete = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$athlete) {
                     jsresloc(false, 'Athlete not found with this username');
                 }
+                
+                error_log("Found athlete for invitation: " . json_encode($athlete));
                 
                 // Check if already connected
                 $stmt = $pdo->prepare("
@@ -233,8 +312,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $result = $stmt->execute([$coachId, $username, $athlete['id'], $invitationCode, $message]);
                 
                 if ($result) {
+                    error_log("Invitation created successfully for athlete_id: " . $athlete['id']);
                     jsresloc(true, 'Invitation sent successfully to ' . $athlete['full_name']);
                 } else {
+                    error_log("Failed to create invitation");
                     jsresloc(false, 'Failed to send invitation');
                 }
                 break;
@@ -474,27 +555,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
             // ===== ATHLETE MANAGEMENT =====
             case 'get_my_athletes':
+                error_log("Getting athletes for coach_id: " . $coachId);
+                
+                // First sync any missing profiles
+                ensureAthleteProfiles($pdo, $coachId);
+                
                 $stmt = $pdo->prepare("
                     SELECT 
                         u.id, u.full_name, u.username, u.email,
-                        ap.sport, ap.position, ap.team_name,
+                        ap.sport, ap.position, ap.team_name, ap.created_at as joined_date,
                         COUNT(DISTINCT ts.id) as total_sessions,
-                        COUNT(DISTINCT tr.id) as completed_sessions,
-                        AVG(tr.performance_score) as avg_performance
+                        COUNT(DISTINCT CASE WHEN ts.status = 'completed' THEN ts.id END) as completed_sessions,
+                        COALESCE(AVG(tr.performance_score), 0) as avg_performance
                     FROM users u
-                    JOIN athlete_profiles ap ON u.id = ap.user_id
-                    LEFT JOIN training_schedule ts ON u.id = ts.user_id AND ts.coach_id = ?
+                    INNER JOIN athlete_profiles ap ON u.id = ap.user_id
+                    LEFT JOIN training_schedule ts ON u.id = ts.user_id
                     LEFT JOIN training_results tr ON u.id = tr.athlete_id AND tr.coach_id = ?
                     WHERE ap.coach_id = ? AND ap.is_active = 1
-                    GROUP BY u.id
-                    ORDER BY u.full_name ASC
+                    GROUP BY u.id, u.full_name, u.username, u.email, ap.sport, ap.position, ap.team_name, ap.created_at
+                    ORDER BY ap.created_at DESC
                 ");
-                $stmt->execute([$coachId, $coachId, $coachId]);
+                $stmt->execute([$coachId, $coachId]);
                 $athletes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                error_log("Found athletes: " . count($athletes));
+                if (count($athletes) > 0) {
+                    error_log("First athlete: " . json_encode($athletes[0]));
+                }
                 
                 jsresloc(true, 'Athletes retrieved', $athletes);
                 break;
                 
+            // ===== ATHLETE MANAGEMENT =====
             case 'remove_athlete':
                 $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
                 
@@ -507,8 +599,110 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 jsresloc($result, $result ? 'Athlete removed' : 'Failed to remove athlete');
                 break;
+
+            // TAMBAHKAN CASE BARU INI
+            case 'permanently_delete_athlete':
+                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
                 
-            // ===== DASHBOARD STATS =====
+                if (!$athleteId) {
+                    jsresloc(false, 'Invalid athlete ID');
+                }
+                
+                // Verify coach has access to this athlete
+                $stmt = $pdo->prepare("
+                    SELECT id FROM athlete_profiles 
+                    WHERE user_id = ? AND coach_id = ? AND is_active = 1
+                ");
+                $stmt->execute([$athleteId, $coachId]);
+                if (!$stmt->fetch()) {
+                    jsresloc(false, 'You do not have access to this athlete');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Delete training results
+                    $stmt = $pdo->prepare("DELETE FROM training_results WHERE athlete_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    // Delete training schedules
+                    $stmt = $pdo->prepare("DELETE FROM training_schedule WHERE user_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    // Delete performance metrics
+                    $stmt = $pdo->prepare("DELETE FROM athlete_performance_metrics WHERE athlete_id = ?");
+                    $stmt->execute([$athleteId]);
+                    
+                    // Delete athlete profile
+                    $stmt = $pdo->prepare("DELETE FROM athlete_profiles WHERE user_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    // Update invitations to expired
+                    $stmt = $pdo->prepare("
+                        UPDATE coach_athlete_invitations 
+                        SET status = 'expired' 
+                        WHERE athlete_id = ? AND coach_id = ?
+                    ");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Athlete and all related data permanently deleted');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    error_log("Error deleting athlete: " . $e->getMessage());
+                    jsresloc(false, 'Failed to delete athlete: ' . $e->getMessage());
+                }
+                break;
+
+            case 'restore_athlete':
+                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
+                
+                // Cek apakah athlete pernah di-invite oleh coach ini
+                $stmt = $pdo->prepare("
+                    SELECT id FROM coach_athlete_invitations 
+                    WHERE coach_id = ? AND athlete_id = ? AND status = 'accepted'
+                ");
+                $stmt->execute([$coachId, $athleteId]);
+                if (!$stmt->fetch()) {
+                    jsresloc(false, 'You do not have permission to restore this athlete');
+                }
+                
+                // Restore athlete profile
+                $stmt = $pdo->prepare("
+                    UPDATE athlete_profiles 
+                    SET is_active = 1, coach_id = ?, updated_at = NOW()
+                    WHERE user_id = ?
+                ");
+                $result = $stmt->execute([$coachId, $athleteId]);
+                
+                jsresloc($result, $result ? 'Athlete restored successfully' : 'Failed to restore athlete');
+                break;
+
+            case 'get_removed_athletes':
+                // Ambil athlete yang pernah di-coach oleh coach ini tapi sekarang tidak aktif
+                $stmt = $pdo->prepare("
+                    SELECT DISTINCT
+                        u.id, u.full_name, u.username, u.email,
+                        ap.sport, ap.position, ap.team_name,
+                        ap.updated_at as removed_at
+                    FROM users u
+                    JOIN athlete_profiles ap ON u.id = ap.user_id
+                    WHERE ap.is_active = 0 
+                    AND ap.user_id IN (
+                        SELECT DISTINCT athlete_id 
+                        FROM coach_athlete_invitations 
+                        WHERE coach_id = ? AND status = 'accepted'
+                    )
+                    ORDER BY ap.updated_at DESC
+                ");
+                $stmt->execute([$coachId]);
+                $removedAthletes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                jsresloc(true, 'Removed athletes retrieved', $removedAthletes);
+                break;
+                
+          // ===== DASHBOARD STATS =====
             case 'get_dashboard_stats':
                 $stats = [];
                 
@@ -550,7 +744,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 jsresloc(true, 'Stats retrieved', $stats);
                 break;
-                
+
+            case 'sync_athletes':
+                $synced = ensureAthleteProfiles($pdo, $coachId);
+                jsresloc(true, "Synchronized $synced athlete profiles");
+                break;
+
             default:
                 jsresloc(false, 'Unknown action');
         }
@@ -1065,6 +1264,33 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             align-items: center;
         }
 
+        .delete-confirmation {
+            background: rgba(239, 68, 68, 0.1);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+        }
+
+        .btn-danger.permanent {
+            background: #dc2626;
+            border: 1px solid #b91c1c;
+        }
+
+        .btn-danger.permanent:hover {
+            background: #b91c1c;
+            box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+        }
+
+        .confirmation-input {
+            background: var(--surface-bg);
+            border: 2px solid var(--accent-danger);
+        }
+
+        .confirmation-input:focus {
+            box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+        }
+
         .invitation-status {
             padding: 0.25rem 0.75rem;
             border-radius: 6px;
@@ -1311,9 +1537,14 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 <div class="content-card">
                     <div class="card-header">
                         <h2 class="card-title">My Athletes</h2>
-                        <button class="btn btn-primary" onclick="showInviteModal()">
-                            ➕ Invite New Athlete
-                        </button>
+                        <div style="display: flex; gap: 1rem;">
+                            <button class="btn btn-info" onclick="showRemovedAthletes()">
+                                👁️ View Removed
+                            </button>
+                            <button class="btn btn-primary" onclick="showInviteModal()">
+                                ➕ Invite New Athlete
+                            </button>
+                        </div>
                     </div>
                     <div id="athletesContainer">
                         <div class="loading" style="margin: 2rem auto; display: block;"></div>
@@ -1659,8 +1890,17 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 body: formData
             });
             
-            const result = await response.json();
-            return result;
+            const responseText = await response.text();
+            console.log('Raw response:', responseText); // Debug line
+            
+            // Check if response is JSON
+            if (responseText.trim().startsWith('{')) {
+                const result = JSON.parse(responseText);
+                return result;
+            } else {
+                console.error('Non-JSON response:', responseText);
+                return { success: false, message: 'Server returned invalid response' };
+            }
         } catch (error) {
             console.error('Request error:', error);
             return { success: false, message: 'Network error' };
@@ -1729,7 +1969,9 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     // Athletes functions
     async function loadAthletes() {
+        console.log('Loading athletes...');
         const result = await makeRequest('get_my_athletes');
+        console.log('Athletes result:', result);
         if (result.success) {
             athletesData = result.data || [];
             const container = document.getElementById('athletesContainer');
@@ -1770,7 +2012,7 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                                 <div class="stat-item-label">Performance</div>
                             </div>
                         </div>
-                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
                             <button class="btn btn-primary" onclick="scheduleTrainingFor(${athlete.id})">
                                 📅 Schedule Training
                             </button>
@@ -1778,7 +2020,10 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                                 📊 View Details
                             </button>
                             <button class="btn btn-danger" onclick="removeAthlete(${athlete.id})">
-                                🗑️ Remove
+                                🚫 Remove
+                            </button>
+                            <button class="btn btn-danger" onclick="showDeleteConfirmation(${athlete.id}, '${athlete.full_name}')" style="background: var(--accent-danger); opacity: 0.8;">
+                                🗑️ Delete
                             </button>
                         </div>
                     </div>
@@ -2155,6 +2400,157 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         }
     }
 
+    // Enhanced athlete management functions
+    async function removeAthlete(id) {
+        if (!confirm('Remove this athlete from your program? (This can be undone later)')) return;
+        
+        const result = await makeRequest('remove_athlete', { athlete_id: id });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            loadAthletes();
+            loadDashboardStats(); // Refresh stats
+        }
+    }
+
+    function showDeleteConfirmation(athleteId, athleteName) {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2 style="color: var(--accent-danger); margin-bottom: 1rem;">⚠️ Permanently Delete Athlete</h2>
+                
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+                    <h4>This will permanently delete:</h4>
+                    <ul style="margin: 0.5rem 0 0 1rem; color: var(--text-secondary);">
+                        <li>Athlete profile: <strong>${athleteName}</strong></li>
+                        <li>All training schedules</li>
+                        <li>All training results</li>
+                        <li>All performance metrics</li>
+                        <li>All invitation history</li>
+                    </ul>
+                    <p style="margin-top: 1rem; font-weight: 600;">This action CANNOT be undone!</p>
+                </div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">
+                        Type "DELETE ${athleteName}" to confirm:
+                    </label>
+                    <input type="text" id="deleteConfirmText" class="form-input" placeholder="DELETE ${athleteName}" style="width: 100%;">
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" class="btn" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmPermanentDelete(${athleteId}, '${athleteName}', this)">
+                        🗑️ Permanently Delete
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+    }
+
+    async function confirmPermanentDelete(athleteId, athleteName, buttonElement) {
+        const confirmText = document.getElementById('deleteConfirmText').value;
+        const expectedText = `DELETE ${athleteName}`;
+        
+        if (confirmText !== expectedText) {
+            showNotification('Confirmation text does not match. Please type exactly: ' + expectedText, 'error');
+            return;
+        }
+        
+        // Disable button and show loading
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<div class="loading"></div> Deleting...';
+        
+        const result = await makeRequest('permanently_delete_athlete', { athlete_id: athleteId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadAthletes();
+            loadDashboardStats();
+        } else {
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = '🗑️ Permanently Delete';
+        }
+    }
+
+    // Function to show removed athletes (for restore functionality)
+    async function showRemovedAthletes() {
+        const result = await makeRequest('get_removed_athletes');
+        
+        if (!result.success) {
+            showNotification('Failed to load removed athletes', 'error');
+            return;
+        }
+        
+        const removedAthletes = result.data || [];
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Removed Athletes</h2>
+                
+                <div style="max-height: 400px; overflow-y: auto; margin: 1rem 0;">
+                    ${removedAthletes.length === 0 ? `
+                        <div class="empty-state">
+                            <h3>No removed athletes</h3>
+                            <p>Athletes you remove will appear here</p>
+                        </div>
+                    ` : removedAthletes.map(athlete => `
+                        <div class="athlete-card">
+                            <div class="athlete-info">
+                                <div class="athlete-avatar">
+                                    ${getInitials(athlete.full_name)}
+                                </div>
+                                <div class="athlete-details">
+                                    <h3>${athlete.full_name}</h3>
+                                    <p>@${athlete.username} • Removed: ${new Date(athlete.removed_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                <button class="btn btn-success" onclick="restoreAthlete(${athlete.id})">
+                                    ↺ Restore
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+                    <button class="btn" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    async function restoreAthlete(athleteId) {
+        if (!confirm('Restore this athlete to your program?')) return;
+        
+        const result = await makeRequest('restore_athlete', { athlete_id: athleteId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadAthletes();
+            loadDashboardStats();
+        }
+    }
+    
     // Helper functions
     function getInitials(name) {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().substr(0, 2);
@@ -2245,17 +2641,6 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         
         if (result.success) {
             loadInvitations();
-        }
-    }
-
-    async function removeAthlete(id) {
-        if (!confirm('Remove this athlete from your program?')) return;
-        
-        const result = await makeRequest('remove_athlete', { athlete_id: id });
-        showNotification(result.message, result.success ? 'success' : 'error');
-        
-        if (result.success) {
-            loadAthletes();
         }
     }
 

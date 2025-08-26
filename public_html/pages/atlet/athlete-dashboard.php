@@ -91,6 +91,89 @@ function sanitizeinputloc($input, $type = 'string') {
     }
 }
 
+function cleanupInvitations($pdo, $coachId) {
+    try {
+        // Clean up expired invitations (older than 30 days and still pending)
+        $stmt = $pdo->prepare("
+            UPDATE coach_athlete_invitations 
+            SET status = 'expired' 
+            WHERE coach_id = ? 
+            AND status = 'pending' 
+            AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ");
+        $stmt->execute([$coachId]);
+        
+        // Find accepted invitations that don't have corresponding athlete profiles
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT i.athlete_id, i.coach_id
+            FROM coach_athlete_invitations i
+            LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+            WHERE i.coach_id = ? AND i.status = 'accepted' AND ap.id IS NULL
+        ");
+        $stmt->execute([$coachId]);
+        $missingProfiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Create missing profiles
+        foreach ($missingProfiles as $missing) {
+            $stmt = $pdo->prepare("
+                INSERT INTO athlete_profiles 
+                (user_id, coach_id, sport, is_active, created_at) 
+                VALUES (?, ?, 'General', 1, NOW())
+                ON DUPLICATE KEY UPDATE coach_id = VALUES(coach_id), is_active = 1
+            ");
+            $stmt->execute([$missing['athlete_id'], $missing['coach_id']]);
+        }
+        
+        error_log("Cleanup completed for coach_id: " . $coachId);
+    } catch (Exception $e) {
+        error_log("Cleanup error: " . $e->getMessage());
+    }
+}
+
+function debugAthleteData($pdo, $coachId) {
+    error_log("=== DEBUG ATHLETE DATA FOR COACH $coachId ===");
+    
+    // Check invitations
+    $stmt = $pdo->prepare("
+        SELECT i.*, u.username as athlete_username, u.full_name
+        FROM coach_athlete_invitations i
+        LEFT JOIN users u ON i.athlete_id = u.id
+        WHERE i.coach_id = ? 
+        ORDER BY i.created_at DESC LIMIT 10
+    ");
+    $stmt->execute([$coachId]);
+    $invitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Invitations count: " . count($invitations));
+    error_log("Invitations: " . json_encode($invitations));
+    
+    // Check athlete profiles
+    $stmt = $pdo->prepare("
+        SELECT ap.*, u.username, u.full_name, u.role
+        FROM athlete_profiles ap
+        LEFT JOIN users u ON ap.user_id = u.id
+        WHERE ap.coach_id = ?
+    ");
+    $stmt->execute([$coachId]);
+    $profiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Profiles count: " . count($profiles));
+    error_log("Profiles: " . json_encode($profiles));
+    
+    // Check accepted invitations without profiles
+    $stmt = $pdo->prepare("
+        SELECT i.athlete_id, i.status, u.username
+        FROM coach_athlete_invitations i
+        LEFT JOIN users u ON i.athlete_id = u.id
+        LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+        WHERE i.coach_id = ? AND i.status = 'accepted' AND ap.id IS NULL
+    ");
+    $stmt->execute([$coachId]);
+    $orphaned = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Orphaned accepted invitations: " . count($orphaned));
+    error_log("Orphaned data: " . json_encode($orphaned));
+    
+    error_log("=== END DEBUG ===");
+}
+
 function jsonresloc($success, $message, $data = null) {
     header('Content-Type: application/json');
     $response = ['success' => $success, 'message' => $message];
@@ -99,6 +182,52 @@ function jsonresloc($success, $message, $data = null) {
     }
     echo json_encode($response, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function debugInvitationData($pdo, $userId, $username) {
+    // Check if user exists in users table
+    $stmt = $pdo->prepare("SELECT id, username, role FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    error_log("User data: " . json_encode($user));
+    
+    // Check all invitations in table
+    $stmt = $pdo->query("SELECT * FROM coach_athlete_invitations ORDER BY created_at DESC LIMIT 5");
+    $allInvitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Recent invitations: " . json_encode($allInvitations));
+    
+    // Check specific invitations for this user
+    $stmt = $pdo->prepare("
+        SELECT * FROM coach_athlete_invitations 
+        WHERE athlete_id = ? OR athlete_username = ?
+    ");
+    $stmt->execute([$userId, $username]);
+    $userInvitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("User invitations: " . json_encode($userInvitations));
+}
+
+function syncAthleteProfiles($pdo, $coachId) {
+    try {
+        // Create missing profiles for accepted invitations
+        $stmt = $pdo->prepare("
+            INSERT IGNORE INTO athlete_profiles (user_id, coach_id, sport, is_active, created_at)
+            SELECT DISTINCT i.athlete_id, i.coach_id, 'General', 1, NOW()
+            FROM coach_athlete_invitations i
+            LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+            WHERE i.coach_id = ? AND i.status = 'accepted' AND i.athlete_id IS NOT NULL AND ap.id IS NULL
+        ");
+        $result = $stmt->execute([$coachId]);
+        $created = $stmt->rowCount();
+        
+        if ($created > 0) {
+            error_log("Synced $created athlete profiles for coach $coachId");
+        }
+        
+        return $created;
+    } catch (Exception $e) {
+        error_log("Error syncing profiles: " . $e->getMessage());
+        return 0;
+    }
 }
 
 // Enhanced AJAX handlerlogin.html
@@ -436,7 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'get_users':
                 $stmt = $pdo->query("
                     SELECT id, username, full_name, email 
-                    FROM admin_users 
+                    FROM users 
                     WHERE is_active = 1 
                     ORDER BY username ASC
                 ");
@@ -476,7 +605,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
             // ===== COACH INVITATIONS ACTIONS =====
             case 'get_coach_invitations':
-                $stmt = $pdo->query("
+                error_log("Getting invitations for user_id: " . $_SESSION['user_id'] . ", username: " . $_SESSION['username']);
+                
+                $stmt = $pdo->prepare("
                     SELECT i.*, u.full_name as coach_name, u.username as coach_username
                     FROM coach_athlete_invitations i
                     JOIN users u ON i.coach_id = u.id
@@ -485,58 +616,85 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ");
                 $stmt->execute([$_SESSION['user_id'], $_SESSION['username']]);
                 $invitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                error_log("Found invitations: " . count($invitations));
+                error_log("Invitations data: " . json_encode($invitations));
+
                 jsonresloc(true, 'Invitations retrieved', $invitations);
                 break;
 
             case 'respond_to_invitation':
                 $invitationId = sanitizeinputloc($_POST['invitation_id'] ?? 0, 'int');
-                $response = sanitizeinputloc($_POST['response'] ?? ''); // 'accepted' or 'rejected'
+                $response = sanitizeinputloc($_POST['response'] ?? '');
+                
+                if ($invitationId <= 0) {
+                    jsonresloc(false, 'ID invitation tidak valid');
+                }
                 
                 if (!in_array($response, ['accepted', 'rejected'])) {
-                    jsonresloc(false, 'Invalid response');
+                    jsonresloc(false, 'Respons tidak valid');
                 }
                 
                 // Get invitation details
                 $stmt = $pdo->prepare("
-                    SELECT coach_id, athlete_username 
+                    SELECT coach_id, athlete_username, athlete_id, status
                     FROM coach_athlete_invitations 
-                    WHERE id = ? AND (athlete_id = ? OR athlete_username = ?) AND status = 'pending'
+                    WHERE id = ? AND status = 'pending'
                 ");
-                $stmt->execute([$invitationId, $_SESSION['user_id'], $_SESSION['username']]);
+                $stmt->execute([$invitationId]);
                 $invitation = $stmt->fetch(PDO::FETCH_ASSOC);
                 
                 if (!$invitation) {
-                    jsonresloc(false, 'Invitation not found or already responded');
+                    jsonresloc(false, 'Invitation tidak ditemukan atau sudah direspon');
                 }
                 
-                // Update invitation status
-                $stmt = $pdo->prepare("
-                    UPDATE coach_athlete_invitations 
-                    SET status = ?, athlete_id = ?, responded_at = NOW() 
-                    WHERE id = ?
-                ");
-                $stmt->execute([$response, $_SESSION['user_id'], $invitationId]);
+                // Validasi kepemilikan invitation
+                $isForCurrentUser = false;
+                if ($invitation['athlete_id'] == $_SESSION['user_id']) {
+                    $isForCurrentUser = true;
+                } elseif ($invitation['athlete_id'] === null && $invitation['athlete_username'] == $_SESSION['username']) {
+                    $isForCurrentUser = true;
+                }
                 
-                // If accepted, update athlete profile
-                if ($response === 'accepted') {
-                    $stmt = $pdo->prepare("
-                        UPDATE athlete_profiles 
-                        SET coach_id = ? 
-                        WHERE user_id = ? AND is_active = 1
-                    ");
-                    $stmt->execute([$invitation['coach_id'], $_SESSION['user_id']]);
+                if (!$isForCurrentUser) {
+                    jsonresloc(false, 'Anda tidak memiliki akses untuk merespon invitation ini');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
                     
-                    // If no profile exists, create one
+                    // Update invitation status
                     $stmt = $pdo->prepare("
-                        INSERT IGNORE INTO athlete_profiles 
-                        (user_id, coach_id, sport, created_at) 
-                        VALUES (?, ?, 'General', NOW())
+                        UPDATE coach_athlete_invitations 
+                        SET status = ?, athlete_id = ?, responded_at = NOW() 
+                        WHERE id = ?
                     ");
-                    $stmt->execute([$_SESSION['user_id'], $invitation['coach_id']]);
+                    $stmt->execute([$response, $_SESSION['user_id'], $invitationId]);
+                    
+                    if ($response === 'accepted') {
+                        // Gunakan INSERT ... ON DUPLICATE KEY UPDATE untuk handle duplikasi
+                        $stmt = $pdo->prepare("
+                            INSERT INTO athlete_profiles 
+                            (user_id, coach_id, sport, is_active, created_at) 
+                            VALUES (?, ?, 'General', 1, NOW())
+                            ON DUPLICATE KEY UPDATE 
+                            is_active = 1, updated_at = NOW()
+                        ");
+                        $stmt->execute([$_SESSION['user_id'], $invitation['coach_id']]);
+                        
+                        error_log("Profile ensured for user: " . $_SESSION['user_id'] . ", coach: " . $invitation['coach_id']);
+                    }
+                    
+                    $pdo->commit();
+                    
+                    $message = $response === 'accepted' ? 'Invitation berhasil diterima' : 'Invitation berhasil ditolak';
+                    jsonresloc(true, $message);
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    error_log("Error responding to invitation: " . $e->getMessage());
+                    jsonresloc(false, 'Gagal merespon invitation: ' . $e->getMessage());
                 }
-                
-                $message = $response === 'accepted' ? 'Invitation accepted successfully' : 'Invitation rejected';
-                jsonresloc(true, $message);
                 break;
 
             // ===== TRAINING RESULTS ACTIONS =====
@@ -589,6 +747,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         jsonresloc(false, 'An error occurred: ' . $e->getMessage());
     }
 }
+
 ?>
 
 <!DOCTYPE html>
