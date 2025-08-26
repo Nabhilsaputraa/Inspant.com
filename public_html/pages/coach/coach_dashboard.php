@@ -124,6 +124,41 @@ function initializeTables($pdo) {
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
             FOREIGN KEY (athlete_id) REFERENCES users(id) ON DELETE CASCADE,
             UNIQUE KEY unique_athlete_date (athlete_id, metric_date)
+        )",
+
+        "CREATE TABLE IF NOT EXISTS training_metric_templates (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            coach_id INT NOT NULL,
+            template_name VARCHAR(100) NOT NULL,
+            sport_category VARCHAR(50) DEFAULT 'general',
+            is_default BOOLEAN DEFAULT 0,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (coach_id) REFERENCES users(id) ON DELETE CASCADE,
+            INDEX idx_coach (coach_id)
+        )",
+        
+        "CREATE TABLE IF NOT EXISTS training_metric_fields (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            template_id INT NOT NULL,
+            field_name VARCHAR(100) NOT NULL,
+            field_type ENUM('number', 'decimal', 'text', 'select', 'boolean') DEFAULT 'number',
+            field_unit VARCHAR(20) NULL,
+            field_options JSON NULL,
+            min_value DECIMAL(10,2) NULL,
+            max_value DECIMAL(10,2) NULL,
+            is_required BOOLEAN DEFAULT 0,
+            display_order INT DEFAULT 0,
+            FOREIGN KEY (template_id) REFERENCES training_metric_templates(id) ON DELETE CASCADE,
+            INDEX idx_template (template_id)
+        )",
+        
+        "CREATE TABLE IF NOT EXISTS training_result_data (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            training_result_id INT NOT NULL,
+            field_name VARCHAR(100) NOT NULL,
+            field_value TEXT NOT NULL,
+            FOREIGN KEY (training_result_id) REFERENCES training_results(id) ON DELETE CASCADE,
+            INDEX idx_result (training_result_id)
         )"
     ];
     
@@ -550,7 +585,153 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 
                 jsresloc(true, 'Stats retrieved', $stats);
                 break;
+<<<<<<< Updated upstream
                 
+=======
+
+            case 'sync_athletes':
+                $synced = ensureAthleteProfiles($pdo, $coachId);
+                jsresloc(true, "Synchronized $synced athlete profiles");
+                break;
+
+            case 'create_metric_template':
+                $templateName = sanitizeloc($_POST['template_name'] ?? '');
+                $sportCategory = sanitizeloc($_POST['sport_category'] ?? 'general');
+                $fields = json_decode($_POST['fields'] ?? '[]', true);
+                
+                if (empty($templateName) || empty($fields)) {
+                    jsresloc(false, 'Template name and fields are required');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Insert template
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_metric_templates (coach_id, template_name, sport_category) 
+                        VALUES (?, ?, ?)
+                    ");
+                    $stmt->execute([$coachId, $templateName, $sportCategory]);
+                    $templateId = $pdo->lastInsertId();
+                    
+                    // Insert fields
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_metric_fields 
+                        (template_id, field_name, field_type, field_unit, field_options, min_value, max_value, is_required, display_order) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    
+                    foreach ($fields as $index => $field) {
+                        $stmt->execute([
+                            $templateId,
+                            $field['name'],
+                            $field['type'],
+                            $field['unit'] ?? null,
+                            isset($field['options']) ? json_encode($field['options']) : null,
+                            $field['min'] ?? null,
+                            $field['max'] ?? null,
+                            $field['required'] ?? 0,
+                            $index
+                        ]);
+                    }
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Template created successfully');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to create template: ' . $e->getMessage());
+                }
+                break;
+
+            case 'get_metric_templates':
+                $stmt = $pdo->prepare("
+                    SELECT t.*, 
+                        COUNT(f.id) as field_count,
+                        GROUP_CONCAT(f.field_name ORDER BY f.display_order) as field_names
+                    FROM training_metric_templates t
+                    LEFT JOIN training_metric_fields f ON t.id = f.template_id
+                    WHERE t.coach_id = ?
+                    GROUP BY t.id
+                    ORDER BY t.template_name
+                ");
+                $stmt->execute([$coachId]);
+                $templates = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                jsresloc(true, 'Templates retrieved', $templates);
+                break;
+
+            case 'get_template_fields':
+                $templateId = sanitizeloc($_POST['template_id'] ?? 0, 'int');
+                
+                $stmt = $pdo->prepare("
+                    SELECT * FROM training_metric_fields 
+                    WHERE template_id = ? 
+                    ORDER BY display_order
+                ");
+                $stmt->execute([$templateId]);
+                $fields = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                jsresloc(true, 'Fields retrieved', $fields);
+                break;
+
+            case 'add_training_result_with_template':
+                $scheduleId = sanitizeloc($_POST['schedule_id'] ?? 0, 'int');
+                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
+                $templateId = sanitizeloc($_POST['template_id'] ?? 0, 'int');
+                $customData = json_decode($_POST['custom_data'] ?? '{}', true);
+                
+                // Basic validation
+                if (!$scheduleId || !$athleteId) {
+                    jsresloc(false, 'Schedule ID and Athlete ID are required');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Insert basic training result
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_results 
+                        (training_schedule_id, athlete_id, coach_id, performance_score, notes, feedback) 
+                        VALUES (?, ?, ?, ?, ?, ?)
+                    ");
+                    $stmt->execute([
+                        $scheduleId, 
+                        $athleteId, 
+                        $coachId, 
+                        $customData['overall_score'] ?? 0,
+                        $customData['notes'] ?? '',
+                        $customData['feedback'] ?? ''
+                    ]);
+                    
+                    $resultId = $pdo->lastInsertId();
+                    
+                    // Insert custom field data
+                    if ($templateId > 0) {
+                        $stmt = $pdo->prepare("
+                            INSERT INTO training_result_data (training_result_id, field_name, field_value) 
+                            VALUES (?, ?, ?)
+                        ");
+                        
+                        foreach ($customData as $fieldName => $fieldValue) {
+                            if (!in_array($fieldName, ['overall_score', 'notes', 'feedback'])) {
+                                $stmt->execute([$resultId, $fieldName, $fieldValue]);
+                            }
+                        }
+                    }
+                    
+                    // Update training status
+                    $stmt = $pdo->prepare("UPDATE training_schedule SET status = 'completed' WHERE id = ?");
+                    $stmt->execute([$scheduleId]);
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Training result saved successfully');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to save result: ' . $e->getMessage());
+                }
+                break;
+
+>>>>>>> Stashed changes
             default:
                 jsresloc(false, 'Unknown action');
         }
@@ -1391,10 +1572,10 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         <div class="modal-content">
             <span class="close" onclick="closeModal('inviteModal')">&times;</span>
             <h2>Invite Athlete</h2>
-            <form id="inviteForm">
+            <form id="inviteForm" novalidate>
                 <div class="form-group">
-                    <label class="form-label">Athlete Username *</label>
-                    <input type="text" class="form-input" id="invite-username" required placeholder="Enter athlete's username">
+                    <label class="form-label">Athlete Username <span style="color: red;">*</span></label>
+                    <input type="text" class="form-input" id="invite-username" placeholder="Enter athlete's username">
                 </div>
                 <div class="form-group">
                     <label class="form-label">Personal Message</label>
@@ -1413,17 +1594,17 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         <div class="modal-content">
             <span class="close" onclick="closeModal('scheduleModal')">&times;</span>
             <h2>Schedule Training Session</h2>
-            <form id="scheduleForm">
+            <form id="scheduleForm" novalidate>
                 <div class="form-grid">
                     <div class="form-group">
-                        <label class="form-label">Athlete *</label>
-                        <select class="form-select" id="schedule-athlete" required>
+                        <label class="form-label">Athlete <span style="color: red;">*</span></label>
+                        <select class="form-select" id="schedule-athlete">
                             <option value="">Select Athlete</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Training Type *</label>
-                        <select class="form-select" id="schedule-type" required>
+                        <label class="form-label">Training Type <span style="color: red;">*</span></label>
+                        <select class="form-select" id="schedule-type">
                             <option value="strength">Strength</option>
                             <option value="cardio">Cardio</option>
                             <option value="tactical">Tactical</option>
@@ -1435,25 +1616,25 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Session Title *</label>
-                    <input type="text" class="form-input" id="schedule-title" required placeholder="e.g., Morning Strength Training">
+                    <label class="form-label">Session Title <span style="color: red;">*</span></label>
+                    <input type="text" class="form-input" id="schedule-title" placeholder="e.g., Morning Strength Training">
                 </div>
                 
                 <div class="form-grid">
                     <div class="form-group">
-                        <label class="form-label">Date *</label>
-                        <input type="date" class="form-input" id="schedule-date" required>
+                        <label class="form-label">Date <span style="color: red;">*</span></label>
+                        <input type="date" class="form-input" id="schedule-date">
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Start Time *</label>
-                        <input type="time" class="form-input" id="schedule-time" required>
+                        <label class="form-label">Start Time <span style="color: red;">*</span></label>
+                        <input type="time" class="form-input" id="schedule-time">
                     </div>
                 </div>
                 
                 <div class="form-grid">
                     <div class="form-group">
-                        <label class="form-label">Duration (minutes) *</label>
-                        <input type="number" class="form-input" id="schedule-duration" value="60" min="15" max="240" required>
+                        <label class="form-label">Duration (minutes) <span style="color: red;">*</span></label>
+                        <input type="number" class="form-input" id="schedule-duration" value="60" min="15" max="240">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Intensity</label>
@@ -1486,65 +1667,44 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     <!-- Training Result Modal -->
     <div id="resultModal" class="modal">
-        <div class="modal-content">
+        <div class="modal-content" style="max-width: 800px;">
             <span class="close" onclick="closeModal('resultModal')">&times;</span>
             <h2>Add Training Result</h2>
-            <form id="resultForm">
+            <form id="resultForm" novalidate>
                 <div class="form-grid">
                     <div class="form-group">
-                        <label class="form-label">Training Session *</label>
-                        <select class="form-select" id="result-session" required onchange="updateResultAthlete(this.value)">
+                        <label class="form-label">Training Session <span style="color: red;">*</span></label>
+                        <select class="form-select" id="result-session" onchange="updateResultAthlete(this.value)">
                             <option value="">Select Session</option>
                         </select>
                     </div>
                     <div class="form-group">
-                        <label class="form-label">Athlete</label>
-                        <input type="text" class="form-input" id="result-athlete-name" readonly>
-                        <input type="hidden" id="result-athlete-id">
-                    </div>
-                </div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label">Performance Score (0-100) *</label>
-                        <input type="number" class="form-input" id="result-score" min="0" max="100" required>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Duration (minutes)</label>
-                        <input type="number" class="form-input" id="result-duration" min="1">
-                    </div>
-                </div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label">Distance Covered (km)</label>
-                        <input type="number" class="form-input" id="result-distance" step="0.1" min="0">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Calories Burned</label>
-                        <input type="number" class="form-input" id="result-calories" min="0">
-                    </div>
-                </div>
-                
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label">Avg Heart Rate (bpm)</label>
-                        <input type="number" class="form-input" id="result-hr-avg" min="40" max="220">
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Max Heart Rate (bpm)</label>
-                        <input type="number" class="form-input" id="result-hr-max" min="40" max="220">
+                        <label class="form-label">Metric Template</label>
+                        <select class="form-select" id="result-template" onchange="loadTemplateFields(this.value)">
+                            <option value="">Select Template</option>
+                        </select>
+                        <button type="button" class="btn btn-info" onclick="showCreateTemplateModal()" style="margin-top: 0.5rem; width: 100%;">
+                            Create New Template
+                        </button>
                     </div>
                 </div>
                 
                 <div class="form-group">
+                    <label class="form-label">Overall Performance Score (0-100) <span style="color: red;">*</span></label>
+                    <input type="number" class="form-input" id="result-overall-score" min="0" max="100">
+                </div>
+                
+                <!-- Dynamic custom fields container -->
+                <div id="custom-fields-container"></div>
+                
+                <div class="form-group">
                     <label class="form-label">Notes</label>
-                    <textarea class="form-textarea" id="result-notes" rows="2" placeholder="Training observations..."></textarea>
+                    <textarea class="form-textarea" id="result-notes" rows="2"></textarea>
                 </div>
                 
                 <div class="form-group">
                     <label class="form-label">Feedback for Athlete</label>
-                    <textarea class="form-textarea" id="result-feedback" rows="2" placeholder="Coaching feedback..."></textarea>
+                    <textarea class="form-textarea" id="result-feedback" rows="2"></textarea>
                 </div>
                 
                 <div style="display: flex; gap: 1rem; justify-content: flex-end;">
@@ -1571,7 +1731,56 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         // Set today's date as default
         const today = new Date().toISOString().split('T')[0];
         document.getElementById('schedule-date').value = today;
+
+        cleanupRequiredAttributes();
     });
+
+    function cleanupRequiredAttributes() {
+        console.log('Cleaning up required attributes...');
+        const requiredFields = document.querySelectorAll('[required]');
+        
+        requiredFields.forEach(field => {
+            console.log('Removing required from:', field.id || field.name || field.className);
+            field.removeAttribute('required');
+        });
+        
+        console.log(`Cleaned ${requiredFields.length} required attributes`);
+    }
+
+    // Debug function - tambahkan setelah DOMContentLoaded
+    function debugAllRequiredFields() {
+        console.log('=== CHECKING ALL REQUIRED FIELDS ===');
+        const requiredFields = document.querySelectorAll('[required]');
+        requiredFields.forEach((field, index) => {
+            const rect = field.getBoundingClientRect();
+            const isVisible = rect.width > 0 && rect.height > 0 && field.style.display !== 'none';
+            const isHidden = field.type === 'hidden';
+            
+            console.log(`Field ${index}:`, {
+                id: field.id,
+                name: field.name,
+                class: field.className,
+                type: field.type,
+                required: field.required,
+                visible: isVisible,
+                hidden: isHidden,
+                element: field
+            });
+            
+            if (field.required && !isVisible && !isHidden) {
+                console.error('PROBLEMATIC FIELD:', field);
+                field.required = false; // Hapus required dari field bermasalah
+                console.log('Removed required attribute from problematic field');
+            }
+        });
+        console.log('=== END DEBUG ===');
+    }
+
+    // Panggil sebelum form submit
+    document.addEventListener('submit', function(e) {
+        console.log('Form submission detected, checking required fields...');
+        debugAllRequiredFields();
+    }, true);
 
     // Setup event listeners
     function setupEventListeners() {
@@ -1639,6 +1848,9 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 break;
             case 'analytics':
                 loadAnalytics();
+                break;
+            case 'templates':
+                loadTemplates();
                 break;
         }
     }
@@ -2080,8 +2292,15 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         const username = document.getElementById('invite-username').value;
         const message = document.getElementById('invite-message').value;
         
+        // Manual validation
+        if (!username || username.trim() === '') {
+            showNotification('Athlete username is required', 'error');
+            document.getElementById('invite-username').focus();
+            return;
+        }
+        
         const result = await makeRequest('send_invitation', {
-            username: username,
+            username: username.trim(),
             message: message
         });
         
@@ -2099,13 +2318,41 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
     async function handleScheduleSubmit(e) {
         e.preventDefault();
         
+        // Manual validation
+        const athleteId = document.getElementById('schedule-athlete').value;
+        const title = document.getElementById('schedule-title').value;
+        const scheduleDate = document.getElementById('schedule-date').value;
+        const startTime = document.getElementById('schedule-time').value;
+        const duration = document.getElementById('schedule-duration').value;
+        
+        if (!athleteId) {
+            showNotification('Please select an athlete', 'error');
+            document.getElementById('schedule-athlete').focus();
+            return;
+        }
+        if (!title || title.trim() === '') {
+            showNotification('Session title is required', 'error');
+            document.getElementById('schedule-title').focus();
+            return;
+        }
+        if (!scheduleDate) {
+            showNotification('Date is required', 'error');
+            document.getElementById('schedule-date').focus();
+            return;
+        }
+        if (!startTime) {
+            showNotification('Start time is required', 'error');
+            document.getElementById('schedule-time').focus();
+            return;
+        }
+        
         const data = {
-            athlete_id: document.getElementById('schedule-athlete').value,
-            title: document.getElementById('schedule-title').value,
+            athlete_id: athleteId,
+            title: title.trim(),
             type: document.getElementById('schedule-type').value,
-            schedule_date: document.getElementById('schedule-date').value,
-            start_time: document.getElementById('schedule-time').value,
-            duration: document.getElementById('schedule-duration').value,
+            schedule_date: scheduleDate,
+            start_time: startTime,
+            duration: duration,
             intensity: document.getElementById('schedule-intensity').value,
             location: document.getElementById('schedule-location').value,
             description: document.getElementById('schedule-description').value
@@ -2127,34 +2374,440 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
     async function handleResultSubmit(e) {
         e.preventDefault();
         
-        const data = {
-            schedule_id: document.getElementById('result-session').value,
-            athlete_id: document.getElementById('result-athlete-id').value,
-            performance_score: document.getElementById('result-score').value,
-            duration_minutes: document.getElementById('result-duration').value,
-            distance_covered: document.getElementById('result-distance').value,
-            calories_burned: document.getElementById('result-calories').value,
-            heart_rate_avg: document.getElementById('result-hr-avg').value,
-            heart_rate_max: document.getElementById('result-hr-max').value,
+        const scheduleId = document.getElementById('result-session').value;
+        const templateId = document.getElementById('result-template').value;
+        const overallScore = document.getElementById('result-overall-score').value;
+        
+        // Validasi manual tanpa menggunakan browser validation
+        if (!scheduleId) {
+            showNotification('Please select a training session', 'error');
+            return;
+        }
+        
+        if (!overallScore) {
+            showNotification('Overall performance score is required', 'error');
+            return;
+        }
+        
+        // Validasi custom fields dengan data-required
+        if (templateId) {
+            const customFields = document.querySelectorAll('#custom-fields-container input, #custom-fields-container select');
+            for (let field of customFields) {
+                if (field.getAttribute('data-required') === 'true' && (!field.value || field.value.trim() === '')) {
+                    showNotification(`${field.name || 'Field'} is required`, 'error');
+                    return;
+                }
+            }
+        }
+        
+        // Get athlete ID
+        const athleteIdField = document.getElementById('result-athlete-id');
+        const athleteId = athleteIdField ? athleteIdField.value : null;
+        
+        if (!athleteId) {
+            showNotification('Unable to determine athlete for this session', 'error');
+            return;
+        }
+        
+        // Submit data
+        const basicData = {
+            overall_score: overallScore,
             notes: document.getElementById('result-notes').value,
             feedback: document.getElementById('result-feedback').value
         };
         
-        const result = await makeRequest('add_training_result', data);
-        
-        showNotification(result.message, result.success ? 'success' : 'error');
-        
-        if (result.success) {
-            closeModal('resultModal');
-            document.getElementById('resultForm').reset();
-            if (currentSection === 'results') {
-                loadResults();
-            } else if (currentSection === 'schedule') {
-                loadSchedules();
+        try {
+            let result;
+            
+            if (templateId) {
+                const customData = { ...basicData };
+                const customFields = document.querySelectorAll('#custom-fields-container input, #custom-fields-container select');
+                
+                customFields.forEach(field => {
+                    if (field.name && field.value !== '') {
+                        customData[field.name] = field.value;
+                    }
+                });
+                
+                result = await makeRequest('add_training_result_with_template', {
+                    schedule_id: scheduleId,
+                    athlete_id: athleteId,
+                    template_id: templateId,
+                    custom_data: JSON.stringify(customData)
+                });
+            } else {
+                result = await makeRequest('add_training_result', {
+                    schedule_id: scheduleId,
+                    athlete_id: athleteId,
+                    performance_score: basicData.overall_score,
+                    notes: basicData.notes,
+                    feedback: basicData.feedback
+                });
             }
+            
+            showNotification(result.message, result.success ? 'success' : 'error');
+            
+            if (result.success) {
+                closeModal('resultModal');
+                document.getElementById('resultForm').reset();
+                document.getElementById('custom-fields-container').innerHTML = '';
+                const hiddenField = document.getElementById('result-athlete-id');
+                if (hiddenField) hiddenField.remove();
+                loadSectionData(currentSection);
+            }
+        } catch (error) {
+            showNotification('An error occurred while saving the result', 'error');
         }
     }
 
+<<<<<<< Updated upstream
+=======
+    // Enhanced athlete management functions
+    async function removeAthlete(id) {
+        if (!confirm('Remove this athlete from your program? (This can be undone later)')) return;
+        
+        const result = await makeRequest('remove_athlete', { athlete_id: id });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            loadAthletes();
+            loadDashboardStats(); // Refresh stats
+        }
+    }
+
+    function showDeleteConfirmation(athleteId, athleteName) {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2 style="color: var(--accent-danger); margin-bottom: 1rem;">⚠️ Permanently Delete Athlete</h2>
+                
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+                    <h4>This will permanently delete:</h4>
+                    <ul style="margin: 0.5rem 0 0 1rem; color: var(--text-secondary);">
+                        <li>Athlete profile: <strong>${athleteName}</strong></li>
+                        <li>All training schedules</li>
+                        <li>All training results</li>
+                        <li>All performance metrics</li>
+                        <li>All invitation history</li>
+                    </ul>
+                    <p style="margin-top: 1rem; font-weight: 600;">This action CANNOT be undone!</p>
+                </div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">
+                        Type "DELETE ${athleteName}" to confirm:
+                    </label>
+                    <input type="text" id="deleteConfirmText" class="form-input" placeholder="DELETE ${athleteName}" style="width: 100%;">
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" class="btn" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmPermanentDelete(${athleteId}, '${athleteName}', this)">
+                        🗑️ Permanently Delete
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+    }
+
+    async function confirmPermanentDelete(athleteId, athleteName, buttonElement) {
+        const confirmText = document.getElementById('deleteConfirmText').value;
+        const expectedText = `DELETE ${athleteName}`;
+        
+        if (confirmText !== expectedText) {
+            showNotification('Confirmation text does not match. Please type exactly: ' + expectedText, 'error');
+            return;
+        }
+        
+        // Disable button and show loading
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<div class="loading"></div> Deleting...';
+        
+        const result = await makeRequest('permanently_delete_athlete', { athlete_id: athleteId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadAthletes();
+            loadDashboardStats();
+        } else {
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = '🗑️ Permanently Delete';
+        }
+    }
+
+    // Function to show removed athletes (for restore functionality)
+    async function showRemovedAthletes() {
+        const result = await makeRequest('get_removed_athletes');
+        
+        if (!result.success) {
+            showNotification('Failed to load removed athletes', 'error');
+            return;
+        }
+        
+        const removedAthletes = result.data || [];
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Removed Athletes</h2>
+                
+                <div style="max-height: 400px; overflow-y: auto; margin: 1rem 0;">
+                    ${removedAthletes.length === 0 ? `
+                        <div class="empty-state">
+                            <h3>No removed athletes</h3>
+                            <p>Athletes you remove will appear here</p>
+                        </div>
+                    ` : removedAthletes.map(athlete => `
+                        <div class="athlete-card">
+                            <div class="athlete-info">
+                                <div class="athlete-avatar">
+                                    ${getInitials(athlete.full_name)}
+                                </div>
+                                <div class="athlete-details">
+                                    <h3>${athlete.full_name}</h3>
+                                    <p>@${athlete.username} • Removed: ${new Date(athlete.removed_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                <button class="btn btn-success" onclick="restoreAthlete(${athlete.id})">
+                                    ↺ Restore
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+                    <button class="btn" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    async function restoreAthlete(athleteId) {
+        if (!confirm('Restore this athlete to your program?')) return;
+        
+        const result = await makeRequest('restore_athlete', { athlete_id: athleteId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadAthletes();
+            loadDashboardStats();
+        }
+    }
+    
+    // Template management
+    async function loadMetricTemplates() {
+        const result = await makeRequest('get_metric_templates');
+        if (result.success) {
+            const select = document.getElementById('result-template');
+            select.innerHTML = '<option value="">Select Template</option>';
+            
+            result.data.forEach(template => {
+                select.innerHTML += `
+                    <option value="${template.id}">
+                        ${template.template_name} (${template.field_count} fields)
+                    </option>
+                `;
+            });
+        }
+    }
+
+    function generateFieldHTML(field) {
+        const fieldId = `custom_${field.field_name.replace(/[^a-zA-Z0-9]/g, '_')}`;
+        const isRequired = parseInt(field.is_required) === 1;
+        let inputHTML = '';
+        
+        switch (field.field_type) {
+            case 'number':
+                inputHTML = `
+                    <input type="number" class="form-input" id="${fieldId}" 
+                        name="${field.field_name}"
+                        ${field.min_value !== null && field.min_value !== '' ? `min="${field.min_value}"` : ''}
+                        ${field.max_value !== null && field.max_value !== '' ? `max="${field.max_value}"` : ''}
+                        data-required="${isRequired}">
+                `;
+                break;
+            case 'decimal':
+                inputHTML = `
+                    <input type="number" step="0.01" class="form-input" id="${fieldId}" 
+                        name="${field.field_name}"
+                        ${field.min_value !== null && field.min_value !== '' ? `min="${field.min_value}"` : ''}
+                        ${field.max_value !== null && field.max_value !== '' ? `max="${field.max_value}"` : ''}
+                        data-required="${isRequired}">
+                `;
+                break;
+            case 'text':
+                inputHTML = `
+                    <input type="text" class="form-input" id="${fieldId}" 
+                        name="${field.field_name}"
+                        data-required="${isRequired}">
+                `;
+                break;
+            case 'select':
+                const options = field.field_options ? JSON.parse(field.field_options) : [];
+                inputHTML = `
+                    <select class="form-select" id="${fieldId}" name="${field.field_name}" 
+                            data-required="${isRequired}">
+                        <option value="">Select...</option>
+                        ${options.map(opt => `<option value="${opt}">${opt}</option>`).join('')}
+                    </select>
+                `;
+                break;
+            case 'boolean':
+                inputHTML = `
+                    <select class="form-select" id="${fieldId}" name="${field.field_name}"
+                            data-required="${isRequired}">
+                        <option value="">Select...</option>
+                        <option value="1">Yes</option>
+                        <option value="0">No</option>
+                    </select>
+                `;
+                break;
+            default:
+                inputHTML = `
+                    <input type="text" class="form-input" id="${fieldId}" 
+                        name="${field.field_name}"
+                        data-required="${isRequired}">
+                `;
+        }
+        
+        return `
+            <div class="form-group" style="display: block;">
+                <label class="form-label">
+                    ${field.field_name} ${field.field_unit ? `(${field.field_unit})` : ''}
+                    ${isRequired ? '<span style="color: var(--accent-danger);">*</span>' : ''}
+                </label>
+                ${inputHTML}
+            </div>
+        `;
+    }
+
+    async function loadTemplateFields(templateId) {
+        if (!templateId) {
+            document.getElementById('custom-fields-container').innerHTML = '';
+            return;
+        }
+        
+        const result = await makeRequest('get_template_fields', { template_id: templateId });
+        if (result.success) {
+            const container = document.getElementById('custom-fields-container');
+            container.innerHTML = result.data.map(field => generateFieldHTML(field)).join('');
+        }
+    }
+
+    // Template creation modal
+    function showCreateTemplateModal() {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 800px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Create Metric Template</h2>
+                
+                <form id="templateForm" novalidate>
+                    <div class="form-grid">
+                        <div class="form-group">
+                            <label class="form-label">Template Name <span style="color: red;">*</span></label>
+                            <input type="text" class="form-input" id="template-name">
+                        </div>
+                        <div class="form-group">
+                            <label class="form-label">Sport Category</label>
+                            <select class="form-select" id="template-category">
+                                <option value="general">General</option>
+                                <option value="football">Football</option>
+                                <option value="basketball">Basketball</option>
+                                <option value="swimming">Swimming</option>
+                                <option value="athletics">Athletics</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="card-header">
+                        <h3>Metric Fields</h3>
+                        <button type="button" class="btn btn-primary" onclick="addTemplateField()">
+                            Add Field
+                        </button>
+                    </div>
+                    
+                    <div id="template-fields">
+                        <div class="field-template" style="display: none;">
+                            <div style="display: grid; grid-template-columns: 2fr 1fr 1fr 1fr auto; gap: 1rem; align-items: end; margin-bottom: 1rem; padding: 1rem; border: 1px solid var(--glass-border); border-radius: 8px;">
+                                <div>
+                                    <label>Field Name <span style="color: red;">*</span></label>
+                                    <input type="text" class="form-input field-name">
+                                </div>
+                                <div>
+                                    <label>Type <span style="color: red;">*</span></label>
+                                    <select class="form-select field-type">
+                                        <option value="number">Number</option>
+                                        <option value="decimal">Decimal</option>
+                                        <option value="text">Text</option>
+                                        <option value="select">Select</option>
+                                        <option value="boolean">Yes/No</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label>Unit</label>
+                                    <input type="text" class="form-input field-unit" placeholder="kg, km, etc.">
+                                </div>
+                                <div>
+                                    <label style="display: flex; align-items: center; gap: 0.5rem;">
+                                        <input type="checkbox" class="field-required"> Required
+                                    </label>
+                                </div>
+                                <div>
+                                    <button type="button" class="btn btn-danger" onclick="this.closest('.field-template').remove()">
+                                        Remove
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; gap: 1rem; justify-content: flex-end; margin-top: 2rem;">
+                        <button type="button" class="btn" onclick="this.closest('.modal').remove()">Cancel</button>
+                        <button type="submit" class="btn btn-primary">Create Template</button>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Add first field by default
+        addTemplateField();
+        
+        // Handle form submit
+        document.getElementById('templateForm').addEventListener('submit', handleTemplateSubmit);
+    }
+
+    function addTemplateField() {
+        const container = document.getElementById('template-fields');
+        const template = container.querySelector('.field-template').cloneNode(true);
+        template.style.display = 'block';
+        template.classList.remove('field-template');
+        container.appendChild(template);
+    }
+
+>>>>>>> Stashed changes
     // Helper functions
     function getInitials(name) {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().substr(0, 2);
@@ -2199,11 +2852,24 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
     }
 
     function updateResultAthlete(sessionId) {
-        const select = document.getElementById('result-session');
-        const option = select.querySelector(`option[value="${sessionId}"]`);
-        if (option) {
-            document.getElementById('result-athlete-id').value = option.dataset.athlete;
-            document.getElementById('result-athlete-name').value = option.dataset.athleteName;
+        const sessionSelect = document.getElementById('result-session');
+        const selectedOption = sessionSelect.querySelector(`option[value="${sessionId}"]`);
+        
+        // Hapus hidden field yang ada
+        const existingHidden = document.getElementById('result-athlete-id');
+        if (existingHidden) {
+            existingHidden.remove();
+        }
+        
+        if (selectedOption) {
+            // Buat hidden field baru tanpa required
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.id = 'result-athlete-id';
+            hiddenInput.value = selectedOption.dataset.athlete || '';
+            
+            // Tambahkan ke form
+            document.getElementById('resultForm').appendChild(hiddenInput);
         }
     }
 
@@ -2222,18 +2888,58 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         }
     }
 
+    function addMissingResultFormFields() {
+        // This function should be called to ensure all necessary form fields exist
+        // You may need to update the result modal HTML to include:
+        // - result-athlete-id (hidden input)
+        // - result-overall-score (instead of result-score)
+        
+        const resultModal = document.getElementById('resultModal');
+        const form = resultModal.querySelector('form');
+        
+        // Add missing hidden field for athlete ID if it doesn't exist
+        if (!document.getElementById('result-athlete-id')) {
+            const hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.id = 'result-athlete-id';
+            form.appendChild(hiddenInput);
+        }
+    }
+
     function showResultModal() {
         if (schedulesData.length === 0) {
             loadSchedules().then(() => {
+                loadMetricTemplates(); // Load templates
                 document.getElementById('resultModal').style.display = 'block';
             });
         } else {
+            loadMetricTemplates(); // Load templates
             document.getElementById('resultModal').style.display = 'block';
         }
     }
 
     function closeModal(modalId) {
-        document.getElementById(modalId).style.display = 'none';
+        const modal = document.getElementById(modalId);
+        modal.style.display = 'none';
+        
+        // Reset form if it exists
+        const form = modal.querySelector('form');
+        if (form) {
+            form.reset();
+            form.noValidate = false; // Reset validation
+            
+            // Clear custom fields for result modal
+            if (modalId === 'resultModal') {
+                const customContainer = document.getElementById('custom-fields-container');
+                if (customContainer) {
+                    customContainer.innerHTML = '';
+                }
+                const templateSelect = document.getElementById('result-template');
+                if (templateSelect) {
+                    templateSelect.value = '';
+                }
+            }
+        }
     }
 
     // Action functions
@@ -2269,6 +2975,59 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         
         if (result.success) {
             loadSchedules();
+        }
+    }
+
+    async function handleTemplateSubmit(e) {
+        e.preventDefault();
+        
+        const templateName = document.getElementById('template-name').value;
+        const sportCategory = document.getElementById('template-category').value;
+        
+        // Manual validation
+        if (!templateName || templateName.trim() === '') {
+            showNotification('Template name is required', 'error');
+            return;
+        }
+        
+        // Collect field data
+        const fields = [];
+        const fieldContainers = document.querySelectorAll('#template-fields > div:not(.field-template)');
+        
+        let hasValidFields = false;
+        for (let container of fieldContainers) {
+            const name = container.querySelector('.field-name').value;
+            const type = container.querySelector('.field-type').value;
+            const unit = container.querySelector('.field-unit').value;
+            const required = container.querySelector('.field-required').checked;
+            
+            if (name && name.trim()) {
+                fields.push({
+                    name: name.trim(),
+                    type: type,
+                    unit: unit.trim() || null,
+                    required: required ? 1 : 0
+                });
+                hasValidFields = true;
+            }
+        }
+        
+        if (!hasValidFields) {
+            showNotification('Please add at least one field to the template', 'error');
+            return;
+        }
+        
+        const result = await makeRequest('create_metric_template', {
+            template_name: templateName.trim(),
+            sport_category: sportCategory,
+            fields: JSON.stringify(fields)
+        });
+        
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadMetricTemplates(); // Refresh the templates dropdown
         }
     }
 
