@@ -1478,12 +1478,14 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
         .modal-content {
             background: var(--surface-bg);
-            margin: 5% auto;
+            margin: 2% auto;
             padding: 2rem;
             border: 1px solid var(--glass-border);
             border-radius: 16px;
             width: 90%;
-            max-width: 600px;
+            max-width: 800px;
+            max-height: 90vh;
+            overflow-y: auto;
             position: relative;
             box-shadow: var(--shadow-xl);
         }
@@ -1654,6 +1656,16 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             margin: 2rem 0;
         }
 
+        .modal-footer {
+            display: flex;
+            gap: 1rem;
+            justify-content: flex-end;
+            padding: 1rem 2rem;
+            border-top: 1px solid var(--glass-border);
+            background: var(--surface-bg);
+            border-radius: 0 0 16px 16px; /* biar nyatu sama modal */
+        }
+
         .loading {
             display: inline-block;
             width: 20px;
@@ -1713,6 +1725,32 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             border-radius: 8px;
             cursor: pointer;
             font-size: 1.25rem;
+        }
+
+        .modal .form-group {
+            margin-bottom: 1.25rem;
+        }
+
+        .modal .form-grid .form-group {
+            margin-bottom: 1rem;
+        }
+
+        @media (max-width: 768px) {
+            .modal-content {
+                width: 95%;
+                margin: 1% auto;
+                padding: 1.5rem;
+                max-height: 95vh;
+            }
+            
+            .form-grid {
+                grid-template-columns: 1fr;
+                gap: 1rem;
+            }
+            
+            #athlete-selection {
+                max-height: 120px;
+            }
         }
 
         @media (max-width: 1024px) {
@@ -1941,16 +1979,16 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 <!-- Athlete Selection (Multi-select) -->
                 <div class="form-group">
                     <label class="form-label">Select Athletes <span style="color: red;">*</span></label>
-                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.75rem;">
+                    <div style="max-height: 150px; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.75rem; background: var(--elevated-bg);">
                         <div id="athlete-selection">
-                            <div style="margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border);">
+                            <div style="margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border); position: sticky; top: 0; background: var(--elevated-bg); z-index: 1;">
                                 <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
                                     <input type="checkbox" id="select-all-athletes" onchange="toggleAllAthletes(this.checked)">
                                     Select All
                                 </label>
                             </div>
                             <div id="athlete-checkboxes">
-                                <!-- Will be populated dynamically -->
+                                                <!-- Will be populated dynamically -->
                             </div>
                         </div>
                     </div>
@@ -2016,7 +2054,7 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                     <textarea class="form-textarea" id="schedule-description" rows="3" placeholder="Training objectives and exercises..."></textarea>
                 </div>
                 
-                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                <div class="modal-footer">
                     <button type="button" class="btn" onclick="closeModal('scheduleModal')">Cancel</button>
                     <button type="submit" class="btn btn-primary">Schedule Training</button>
                 </div>
@@ -2410,8 +2448,9 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                     `).join('');
                 }
                 
-                // Update athlete selects
-                updateAthleteSelects();
+                // Only update selects if the modals are actually open and elements exist
+                // This prevents the null reference error
+                console.log('Athletes loaded successfully:', athletesData.length);
                 
             } else {
                 throw new Error(result.message || 'Failed to load athletes');
@@ -3306,11 +3345,23 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
     }
 
     function updateAthleteSelects() {
-        const select = document.getElementById('schedule-athlete');
-        select.innerHTML = '<option value="">Select Athlete</option>';
-        athletesData.forEach(athlete => {
-            select.innerHTML += `<option value="${athlete.id}">${athlete.full_name}</option>`;
-        });
+        // Update legacy single athlete select (if it exists for backward compatibility)
+        const legacySelect = document.getElementById('schedule-athlete');
+        if (legacySelect) {
+            legacySelect.innerHTML = '<option value="">Select Athlete</option>';
+            athletesData.forEach(athlete => {
+                legacySelect.innerHTML += `<option value="${athlete.id}">${athlete.full_name}</option>`;
+            });
+        }
+        
+        // Update the multi-athlete checkboxes (current implementation)
+        updateAthleteCheckboxes();
+        
+        // Update result session select (if it exists)
+        const resultSessionSelect = document.getElementById('result-session');
+        if (resultSessionSelect && schedulesData) {
+            updateSessionSelectSimple();
+        }
     }
 
     function updateSessionSelect() {
@@ -4203,15 +4254,24 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     function updateAthleteCheckboxes() {
         const container = document.getElementById('athlete-checkboxes');
-        if (!container) return;
+        if (!container) {
+            console.log('Athlete checkboxes container not found - modal may not be open yet');
+            return;
+        }
         
         container.innerHTML = athletesData.map(athlete => `
-            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer;">
-                <input type="checkbox" value="${athlete.id}" onchange="updateSelectAllState()">
-                <div class="athlete-avatar" style="width: 24px; height: 24px; font-size: 0.7rem;">
+            <label style="display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem; cursor: pointer; border-radius: 6px; transition: background-color 0.2s; margin-bottom: 0.25rem;" 
+                onmouseover="this.style.background='var(--glass-hover)'" 
+                onmouseout="this.style.background='transparent'">
+                <input type="checkbox" value="${athlete.id}" onchange="updateSelectAllState()" 
+                    style="margin: 0; transform: scale(1.1);">
+                <div class="athlete-avatar" style="width: 28px; height: 28px; font-size: 0.75rem; flex-shrink: 0;">
                     ${getInitials(athlete.full_name)}
                 </div>
-                <span>${athlete.full_name} (@${athlete.username})</span>
+                <div style="flex: 1; min-width: 0;">
+                    <div style="font-weight: 500; color: var(--text-primary);">${athlete.full_name}</div>
+                    <div style="font-size: 0.8rem; color: var(--text-tertiary); overflow: hidden; text-overflow: ellipsis;">@${athlete.username}</div>
+                </div>
             </label>
         `).join('');
     }
@@ -4309,8 +4369,15 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
     }
 
     function scheduleTrainingFor(athleteId) {
-        document.getElementById('schedule-athlete').value = athleteId;
+        // Pre-select the specific athlete in the multi-select modal
         showScheduleModal();
+        setTimeout(() => {
+            const checkbox = document.querySelector(`#athlete-checkboxes input[value="${athleteId}"]`);
+            if (checkbox) {
+                checkbox.checked = true;
+                updateSelectAllState();
+            }
+        }, 100);
     }
 
     function addResultForSession(sessionId, athleteId) {
