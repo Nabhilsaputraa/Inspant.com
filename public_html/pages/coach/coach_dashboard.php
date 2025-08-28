@@ -176,6 +176,32 @@ if ($pdo) {
     initializeTables($pdo);
 }
 
+function ensureAthleteProfiles($pdo, $coachId) {
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM coach_athlete_invitations cai
+        JOIN users u ON cai.athlete_id = u.id
+        LEFT JOIN athlete_profiles ap ON u.id = ap.user_id AND ap.coach_id = ?
+        WHERE cai.coach_id = ? AND cai.status = 'accepted' AND ap.id IS NULL
+    ");
+    $stmt->execute([$coachId, $coachId]);
+    $missingProfiles = $stmt->fetchColumn();
+    
+    if ($missingProfiles > 0) {
+        $stmt = $pdo->prepare("
+            INSERT IGNORE INTO athlete_profiles (user_id, coach_id, sport, is_active)
+            SELECT cai.athlete_id, ?, 'general', 1
+            FROM coach_athlete_invitations cai
+            JOIN users u ON cai.athlete_id = u.id
+            LEFT JOIN athlete_profiles ap ON u.id = ap.user_id AND ap.coach_id = ?
+            WHERE cai.coach_id = ? AND cai.status = 'accepted' AND ap.id IS NULL
+        ");
+        $stmt->execute([$coachId, $coachId, $coachId]);
+    }
+    
+    return $missingProfiles;
+}
+
+
 // Helper functions
 function sanitizeloc($input, $type = 'string') {
     switch ($type) {
@@ -300,75 +326,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 jsresloc($result, $result ? 'Invitation cancelled' : 'Failed to cancel invitation');
                 break;
                 
-            // ===== TRAINING SCHEDULE MANAGEMENT =====
-            case 'add_training_schedule':
-                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
-                $title = sanitizeloc($_POST['title'] ?? '');
-                $type = sanitizeloc($_POST['type'] ?? 'technical');
-                $scheduleDate = sanitizeloc($_POST['schedule_date'] ?? '', 'date');
-                $startTime = sanitizeloc($_POST['start_time'] ?? '');
-                $duration = sanitizeloc($_POST['duration'] ?? 60, 'int');
-                $location = sanitizeloc($_POST['location'] ?? '');
-                $description = sanitizeloc($_POST['description'] ?? '');
-                $intensity = sanitizeloc($_POST['intensity'] ?? 'moderate');
-                
-                if (!$athleteId || !$title || !$scheduleDate || !$startTime) {
-                    jsresloc(false, 'Required fields are missing');
-                }
-                
-                // Verify coach has access to this athlete
-                $stmt = $pdo->prepare("
-                    SELECT id FROM athlete_profiles 
-                    WHERE user_id = ? AND coach_id = ? AND is_active = 1
-                ");
-                $stmt->execute([$athleteId, $coachId]);
-                if (!$stmt->fetch()) {
-                    jsresloc(false, 'You do not have access to this athlete');
-                }
-                
-                // Calculate end time
-                $endTime = date('H:i:s', strtotime($startTime) + ($duration * 60));
-                
-                $stmt = $pdo->prepare("
-                    INSERT INTO training_schedule 
-                    (user_id, coach_id, title, type, description, schedule_date, start_time, end_time, 
-                     duration, location, intensity, status) 
-                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')
-                ");
-                
-                $result = $stmt->execute([
-                    $athleteId, $coachId, $title, $type, $description, 
-                    $scheduleDate, $startTime, $endTime, $duration, $location, $intensity
-                ]);
-                
-                jsresloc($result, $result ? 'Training scheduled successfully' : 'Failed to schedule training');
-                break;
-                
-            case 'get_training_schedules':
-                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
-                
-                $sql = "
-                    SELECT ts.*, u.full_name as athlete_name 
-                    FROM training_schedule ts
-                    JOIN users u ON ts.user_id = u.id
-                    WHERE ts.coach_id = ? AND ts.is_active = 1
-                ";
-                
-                $params = [$coachId];
-                if ($athleteId > 0) {
-                    $sql .= " AND ts.user_id = ?";
-                    $params[] = $athleteId;
-                }
-                
-                $sql .= " ORDER BY ts.schedule_date DESC, ts.start_time DESC";
-                
-                $stmt = $pdo->prepare($sql);
-                $stmt->execute($params);
-                $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
-                jsresloc(true, 'Schedules retrieved', $schedules);
-                break;
-                
+            // ===== TRAINING SCHEDULE MANAGEMENT =====    
             case 'update_training_status':
                 $scheduleId = sanitizeloc($_POST['schedule_id'] ?? 0, 'int');
                 $status = sanitizeloc($_POST['status'] ?? '');
@@ -452,7 +410,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $period = sanitizeloc($_POST['period'] ?? 30, 'int');
                 
                 $sql = "
-                    SELECT tr.*, ts.title, ts.type, u.full_name as athlete_name 
+                    SELECT 
+                        tr.*, 
+                        ts.title, 
+                        ts.type, 
+                        u.full_name as athlete_name,
+                        COALESCE(tr.performance_score, 0) as performance_score
                     FROM training_results tr
                     JOIN training_schedule ts ON tr.training_schedule_id = ts.id
                     JOIN users u ON tr.athlete_id = u.id
@@ -511,24 +474,37 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'get_my_athletes':
                 $stmt = $pdo->prepare("
                     SELECT 
-                        u.id, u.full_name, u.username, u.email,
-                        ap.sport, ap.position, ap.team_name,
-                        COUNT(DISTINCT ts.id) as total_sessions,
-                        COUNT(DISTINCT tr.id) as completed_sessions,
-                        AVG(tr.performance_score) as avg_performance
+                        u.id, 
+                        u.full_name, 
+                        u.username, 
+                        u.email,
+                        ap.sport, 
+                        ap.position, 
+                        ap.team_name,
+                        COUNT(DISTINCT ts.id) AS total_sessions,
+                        SUM(CASE WHEN ts.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions,
+                        ROUND(AVG(tr.performance_score), 2) AS avg_performance
                     FROM users u
-                    JOIN athlete_profiles ap ON u.id = ap.user_id
-                    LEFT JOIN training_schedule ts ON u.id = ts.user_id AND ts.coach_id = ?
-                    LEFT JOIN training_results tr ON u.id = tr.athlete_id AND tr.coach_id = ?
-                    WHERE ap.coach_id = ? AND ap.is_active = 1
-                    GROUP BY u.id
+                    JOIN athlete_profiles ap 
+                        ON u.id = ap.user_id
+                    JOIN training_participants tp 
+                        ON tp.athlete_id = u.id
+                    JOIN training_schedule ts 
+                        ON ts.id = tp.training_schedule_id
+                    LEFT JOIN training_results tr 
+                        ON tr.athlete_id = u.id 
+                    AND tr.training_schedule_id = ts.id
+                    WHERE ts.coach_id = ? 
+                    AND ap.is_active = 1
+                    GROUP BY u.id, u.full_name, u.username, u.email, ap.sport, ap.position, ap.team_name
                     ORDER BY u.full_name ASC
                 ");
-                $stmt->execute([$coachId, $coachId, $coachId]);
+                $stmt->execute([$coachId]);
                 $athletes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
+
                 jsresloc(true, 'Athletes retrieved', $athletes);
                 break;
+
                 
             case 'remove_athlete':
                 $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
@@ -574,20 +550,35 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$coachId]);
                 $stats['completed_sessions'] = $stmt->fetchColumn();
                 
-                // Average performance
+                // Average performance (updated for new structure)
                 $stmt = $pdo->prepare("
-                    SELECT AVG(performance_score) FROM training_results 
-                    WHERE coach_id = ? 
-                    AND completed_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
+                    SELECT 
+                        CASE 
+                            WHEN AVG(CASE 
+                                WHEN tr.performance_rating = 'excellent' THEN 90
+                                WHEN tr.performance_rating = 'good' THEN 75
+                                WHEN tr.performance_rating = 'average' THEN 60
+                                WHEN tr.performance_rating = 'needs_improvement' THEN 40
+                                ELSE COALESCE(tr.performance_score, 0)
+                            END) > 0 THEN 
+                                AVG(CASE 
+                                    WHEN tr.performance_rating = 'excellent' THEN 90
+                                    WHEN tr.performance_rating = 'good' THEN 75
+                                    WHEN tr.performance_rating = 'average' THEN 60
+                                    WHEN tr.performance_rating = 'needs_improvement' THEN 40
+                                    ELSE COALESCE(tr.performance_score, 0)
+                                END)
+                            ELSE 0 
+                        END as avg_performance
+                    FROM training_results tr
+                    WHERE tr.coach_id = ? 
+                    AND tr.completed_at >= DATE_SUB(CURDATE(), INTERVAL 30 DAY)
                 ");
                 $stmt->execute([$coachId]);
                 $stats['avg_performance'] = round($stmt->fetchColumn() ?: 0, 1);
                 
                 jsresloc(true, 'Stats retrieved', $stats);
                 break;
-<<<<<<< Updated upstream
-                
-=======
 
             case 'sync_athletes':
                 $synced = ensureAthleteProfiles($pdo, $coachId);
@@ -731,7 +722,359 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 break;
 
->>>>>>> Stashed changes
+            case 'get_removed_athletes':
+                $stmt = $pdo->prepare("
+                    SELECT u.id, u.full_name, u.username, ap.removed_at
+                    FROM users u
+                    JOIN athlete_profiles ap ON u.id = ap.user_id
+                    WHERE ap.coach_id = ? AND ap.is_active = 0
+                    ORDER BY ap.removed_at DESC
+                ");
+                $stmt->execute([$coachId]);
+                $athletes = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                jsresloc(true, 'Removed athletes retrieved', $athletes);
+                break;
+
+            case 'restore_athlete':
+                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
+                
+                $stmt = $pdo->prepare("
+                    UPDATE athlete_profiles 
+                    SET is_active = 1, coach_id = ? 
+                    WHERE user_id = ? AND coach_id IS NULL
+                ");
+                $result = $stmt->execute([$coachId, $athleteId]);
+                
+                jsresloc($result, $result ? 'Athlete restored successfully' : 'Failed to restore athlete');
+                break;
+
+            case 'permanently_delete_athlete':
+                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Delete training results
+                    $stmt = $pdo->prepare("DELETE FROM training_results WHERE athlete_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    // Delete training schedules  
+                    $stmt = $pdo->prepare("DELETE FROM training_schedule WHERE user_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    // Delete performance metrics
+                    $stmt = $pdo->prepare("DELETE FROM athlete_performance_metrics WHERE athlete_id = ?");
+                    $stmt->execute([$athleteId]);
+                    
+                    // Delete invitations
+                    $stmt = $pdo->prepare("DELETE FROM coach_athlete_invitations WHERE athlete_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    // Delete athlete profile
+                    $stmt = $pdo->prepare("DELETE FROM athlete_profiles WHERE user_id = ? AND coach_id = ?");
+                    $stmt->execute([$athleteId, $coachId]);
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Athlete permanently deleted');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to delete athlete: ' . $e->getMessage());
+                }
+                break;
+
+            case 'delete_metric_template':
+                $templateId = sanitizeloc($_POST['template_id'] ?? 0, 'int');
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Delete template fields first
+                    $stmt = $pdo->prepare("DELETE FROM training_metric_fields WHERE template_id = ?");
+                    $stmt->execute([$templateId]);
+                    
+                    // Delete template
+                    $stmt = $pdo->prepare("DELETE FROM training_metric_templates WHERE id = ? AND coach_id = ?");
+                    $result = $stmt->execute([$templateId, $coachId]);
+                    
+                    $pdo->commit();
+                    jsresloc($result, $result ? 'Template deleted successfully' : 'Failed to delete template');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Error deleting template: ' . $e->getMessage());
+                }
+                break;
+
+            case 'add_training_schedule':
+                // Handle legacy single-athlete schedule creation
+                $athleteId = sanitizeloc($_POST['athlete_id'] ?? 0, 'int');
+                $title = sanitizeloc($_POST['title'] ?? '');
+                $type = sanitizeloc($_POST['type'] ?? 'technical');
+                $scheduleDate = sanitizeloc($_POST['schedule_date'] ?? '', 'date');
+                $startTime = sanitizeloc($_POST['start_time'] ?? '');
+                $duration = sanitizeloc($_POST['duration'] ?? 60, 'int');
+                $location = sanitizeloc($_POST['location'] ?? '');
+                $description = sanitizeloc($_POST['description'] ?? '');
+                $intensity = sanitizeloc($_POST['intensity'] ?? 'moderate');
+                
+                if (!$athleteId || !$title || !$scheduleDate || !$startTime) {
+                    jsresloc(false, 'Required fields are missing');
+                }
+                
+                // Verify coach has access to this athlete
+                $stmt = $pdo->prepare("
+                    SELECT id FROM athlete_profiles 
+                    WHERE user_id = ? AND coach_id = ? AND is_active = 1
+                ");
+                $stmt->execute([$athleteId, $coachId]);
+                if (!$stmt->fetch()) {
+                    jsresloc(false, 'You do not have access to this athlete');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Calculate end time
+                    $startDateTime = DateTime::createFromFormat('H:i', $startTime);
+                    if ($startDateTime) {
+                        $endDateTime = clone $startDateTime;
+                        $endDateTime->add(new DateInterval('PT' . $duration . 'M'));
+                        $endTime = $endDateTime->format('H:i:s');
+                    } else {
+                        $endTime = $startTime; // fallback
+                    }
+                    
+                    // Create training schedule (without user_id for new multi-athlete structure)
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_schedule 
+                        (coach_id, title, type, description, schedule_date, start_time, end_time,
+                        duration, location, intensity, max_participants, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 'scheduled')
+                    ");
+                    
+                    $result = $stmt->execute([
+                        $coachId, $title, $type, $description, 
+                        $scheduleDate, $startTime, $endTime, $duration, 
+                        $location, $intensity
+                    ]);
+                    
+                    if (!$result) {
+                        throw new Exception('Failed to create training schedule');
+                    }
+                    
+                    $scheduleId = $pdo->lastInsertId();
+                    
+                    // Add the single athlete as participant
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_participants (training_schedule_id, athlete_id, status) 
+                        VALUES (?, ?, 'registered')
+                    ");
+                    $stmt->execute([$scheduleId, $athleteId]);
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Training scheduled successfully');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to schedule training: ' . $e->getMessage());
+                }
+                break;
+
+            case 'add_training_schedule_multi':
+                $athleteIds = json_decode($_POST['athlete_ids'] ?? '[]', true);
+                $title = sanitizeloc($_POST['title'] ?? '');
+                $type = sanitizeloc($_POST['type'] ?? 'technical');
+                $scheduleDate = sanitizeloc($_POST['schedule_date'] ?? '', 'date');
+                $startTime = sanitizeloc($_POST['start_time'] ?? '');
+                $duration = sanitizeloc($_POST['duration'] ?? 60, 'int');
+                $location = sanitizeloc($_POST['location'] ?? '');
+                $description = sanitizeloc($_POST['description'] ?? '');
+                $intensity = sanitizeloc($_POST['intensity'] ?? 'moderate');
+                $maxParticipants = sanitizeloc($_POST['max_participants'] ?? count($athleteIds), 'int');
+                
+                if (empty($athleteIds) || !$title || !$scheduleDate || !$startTime) {
+                    jsresloc(false, 'Required fields are missing or no athletes selected');
+                }
+                
+                // Verify coach has access to all selected athletes
+                $placeholders = str_repeat('?,', count($athleteIds) - 1) . '?';
+                $params = array_merge($athleteIds, [$coachId]);
+                
+                $stmt = $pdo->prepare("
+                    SELECT COUNT(*) FROM athlete_profiles 
+                    WHERE user_id IN ($placeholders) AND coach_id = ? AND is_active = 1
+                ");
+                $stmt->execute($params);
+                $accessibleCount = $stmt->fetchColumn();
+                
+                if ($accessibleCount != count($athleteIds)) {
+                    jsresloc(false, 'You do not have access to some selected athletes');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Calculate end time
+                    $startDateTime = DateTime::createFromFormat('H:i', $startTime);
+                    $endDateTime = clone $startDateTime;
+                    $endDateTime->add(new DateInterval('PT' . $duration . 'M'));
+                    $endTime = $endDateTime->format('H:i:s');
+                    
+                    // Insert training schedule (without user_id)
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_schedule 
+                        (coach_id, title, type, description, schedule_date, start_time, end_time,
+                        duration, location, intensity, max_participants, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')
+                    ");
+                    
+                    $result = $stmt->execute([
+                        $coachId, $title, $type, $description, 
+                        $scheduleDate, $startTime, $endTime, $duration, 
+                        $location, $intensity, $maxParticipants
+                    ]);
+                    
+                    if (!$result) {
+                        throw new Exception('Failed to create training schedule');
+                    }
+                    
+                    $scheduleId = $pdo->lastInsertId();
+                    
+                    // Add participants
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_participants (training_schedule_id, athlete_id, status) 
+                        VALUES (?, ?, 'registered')
+                    ");
+                    
+                    foreach ($athleteIds as $athleteId) {
+                        $stmt->execute([$scheduleId, $athleteId]);
+                    }
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Training scheduled successfully for ' . count($athleteIds) . ' athletes');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to schedule training: ' . $e->getMessage());
+                }
+                break;
+
+            case 'get_training_schedules':
+                // Redirect to multi version for consistency
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        ts.*,
+                        COUNT(tp.athlete_id) as participant_count,
+                        GROUP_CONCAT(u.full_name ORDER BY u.full_name SEPARATOR ', ') as participant_names,
+                        GROUP_CONCAT(tp.athlete_id) as participant_ids
+                    FROM training_schedule ts
+                    LEFT JOIN training_participants tp ON ts.id = tp.training_schedule_id AND tp.status != 'cancelled'
+                    LEFT JOIN users u ON tp.athlete_id = u.id
+                    WHERE ts.coach_id = ? AND ts.is_active = 1
+                    GROUP BY ts.id
+                    ORDER BY ts.schedule_date DESC, ts.start_time DESC
+                ");
+                $stmt->execute([$coachId]);
+                $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                jsresloc(true, 'Schedules retrieved', $schedules);
+                break;
+
+            case 'add_training_result_simple':
+                $scheduleId = sanitizeloc($_POST['schedule_id'] ?? 0, 'int');
+                $resultsData = json_decode($_POST['results_data'] ?? '{}', true);
+                $generalNotes = sanitizeloc($_POST['general_notes'] ?? '');
+                
+                if (!$scheduleId || empty($resultsData)) {
+                    jsresloc(false, 'Schedule ID and results data are required');
+                }
+                
+                // Verify coach has access to this training session
+                $stmt = $pdo->prepare("SELECT id FROM training_schedule WHERE id = ? AND coach_id = ?");
+                $stmt->execute([$scheduleId, $coachId]);
+                if (!$stmt->fetch()) {
+                    jsresloc(false, 'Invalid training session');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_results 
+                        (training_schedule_id, athlete_id, coach_id, attendance_status, performance_rating, notes, feedback) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ");
+                    
+                    $savedCount = 0;
+                    foreach ($resultsData as $athleteId => $data) {
+                        $attendanceStatus = $data['attendance'] ?? 'present';
+                        $performanceRating = $data['performance'] ?? null;
+                        $individualNotes = $data['notes'] ?? '';
+                        $feedback = $data['feedback'] ?? '';
+                        
+                        // Combine general and individual notes
+                        $combinedNotes = trim($generalNotes . ($individualNotes ? "\n\nIndividual: " . $individualNotes : ''));
+                        
+                        $result = $stmt->execute([
+                            $scheduleId, 
+                            $athleteId, 
+                            $coachId, 
+                            $attendanceStatus,
+                            $performanceRating,
+                            $combinedNotes,
+                            $feedback
+                        ]);
+                        
+                        if ($result) $savedCount++;
+                    }
+                    
+                    // Update training status to completed
+                    $stmt = $pdo->prepare("UPDATE training_schedule SET status = 'completed' WHERE id = ?");
+                    $stmt->execute([$scheduleId]);
+                    
+                    // Update participant attendance
+                    foreach ($resultsData as $athleteId => $data) {
+                        $stmt = $pdo->prepare("
+                            UPDATE training_participants 
+                            SET attendance_status = ? 
+                            WHERE training_schedule_id = ? AND athlete_id = ?
+                        ");
+                        $stmt->execute([$data['attendance'] ?? 'present', $scheduleId, $athleteId]);
+                    }
+                    
+                    $pdo->commit();
+                    jsresloc(true, "Training results saved for $savedCount athletes");
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to save results: ' . $e->getMessage());
+                }
+                break;
+
+            case 'get_training_participants':
+                $scheduleId = sanitizeloc($_POST['schedule_id'] ?? 0, 'int');
+                
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        tp.athlete_id,
+                        u.full_name,
+                        u.username,
+                        tp.status as registration_status,
+                        tp.attendance_status,
+                        COALESCE(tr.id, 0) as has_result
+                    FROM training_participants tp
+                    JOIN users u ON tp.athlete_id = u.id
+                    LEFT JOIN training_results tr ON tp.training_schedule_id = tr.training_schedule_id AND tp.athlete_id = tr.athlete_id
+                    WHERE tp.training_schedule_id = ?
+                    ORDER BY u.full_name
+                ");
+                $stmt->execute([$scheduleId]);
+                $participants = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                jsresloc(true, 'Participants retrieved', $participants);
+                break;
+
             default:
                 jsresloc(false, 'Unknown action');
         }
@@ -1595,13 +1938,25 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             <span class="close" onclick="closeModal('scheduleModal')">&times;</span>
             <h2>Schedule Training Session</h2>
             <form id="scheduleForm" novalidate>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label">Athlete <span style="color: red;">*</span></label>
-                        <select class="form-select" id="schedule-athlete">
-                            <option value="">Select Athlete</option>
-                        </select>
+                <!-- Athlete Selection (Multi-select) -->
+                <div class="form-group">
+                    <label class="form-label">Select Athletes <span style="color: red;">*</span></label>
+                    <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.75rem;">
+                        <div id="athlete-selection">
+                            <div style="margin-bottom: 0.75rem; padding-bottom: 0.5rem; border-bottom: 1px solid var(--glass-border);">
+                                <label style="display: flex; align-items: center; gap: 0.5rem; font-weight: 600;">
+                                    <input type="checkbox" id="select-all-athletes" onchange="toggleAllAthletes(this.checked)">
+                                    Select All
+                                </label>
+                            </div>
+                            <div id="athlete-checkboxes">
+                                <!-- Will be populated dynamically -->
+                            </div>
+                        </div>
                     </div>
+                </div>
+                
+                <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Training Type <span style="color: red;">*</span></label>
                         <select class="form-select" id="schedule-type">
@@ -1612,6 +1967,10 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                             <option value="flexibility">Flexibility</option>
                             <option value="recovery">Recovery</option>
                         </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Max Participants</label>
+                        <input type="number" class="form-input" id="schedule-max-participants" min="1" placeholder="Auto (based on selection)">
                     </div>
                 </div>
                 
@@ -1634,7 +1993,7 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 <div class="form-grid">
                     <div class="form-group">
                         <label class="form-label">Duration (minutes) <span style="color: red;">*</span></label>
-                        <input type="number" class="form-input" id="schedule-duration" value="60" min="15" max="240">
+                        <input type="number" class="form-input" id="schedule-duration" value="60" min="15" max="480">
                     </div>
                     <div class="form-group">
                         <label class="form-label">Intensity</label>
@@ -1665,46 +2024,55 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         </div>
     </div>
 
-    <!-- Training Result Modal -->
     <div id="resultModal" class="modal">
-        <div class="modal-content" style="max-width: 800px;">
+        <div class="modal-content" style="max-width: 600px;">
             <span class="close" onclick="closeModal('resultModal')">&times;</span>
-            <h2>Add Training Result</h2>
+            <h2>Quick Training Result</h2>
+            
             <form id="resultForm" novalidate>
-                <div class="form-grid">
-                    <div class="form-group">
-                        <label class="form-label">Training Session <span style="color: red;">*</span></label>
-                        <select class="form-select" id="result-session" onchange="updateResultAthlete(this.value)">
-                            <option value="">Select Session</option>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label class="form-label">Metric Template</label>
-                        <select class="form-select" id="result-template" onchange="loadTemplateFields(this.value)">
-                            <option value="">Select Template</option>
-                        </select>
-                        <button type="button" class="btn btn-info" onclick="showCreateTemplateModal()" style="margin-top: 0.5rem; width: 100%;">
-                            Create New Template
-                        </button>
-                    </div>
+                <div class="form-group">
+                    <label class="form-label">Training Session <span style="color: red;">*</span></label>
+                    <select class="form-select" id="result-session" onchange="updateResultAthleteSimple(this.value)">
+                        <option value="">Select Session</option>
+                    </select>
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">Overall Performance Score (0-100) <span style="color: red;">*</span></label>
-                    <input type="number" class="form-input" id="result-overall-score" min="0" max="100">
+                    <label class="form-label">Athlete</label>
+                    <input type="text" class="form-input" id="result-athlete-name" readonly>
+                    <input type="hidden" id="result-athlete-id">
                 </div>
                 
-                <!-- Dynamic custom fields container -->
-                <div id="custom-fields-container"></div>
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label class="form-label">Attendance Status</label>
+                        <select class="form-select" id="result-attendance">
+                            <option value="present">Present</option>
+                            <option value="late">Late</option>
+                            <option value="absent">Absent</option>
+                            <option value="excused">Excused</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Performance Rating</label>
+                        <select class="form-select" id="result-performance">
+                            <option value="">Not Assessed</option>
+                            <option value="excellent">Excellent</option>
+                            <option value="good">Good</option>
+                            <option value="average">Average</option>
+                            <option value="needs_improvement">Needs Improvement</option>
+                        </select>
+                    </div>
+                </div>
                 
                 <div class="form-group">
                     <label class="form-label">Notes</label>
-                    <textarea class="form-textarea" id="result-notes" rows="2"></textarea>
+                    <textarea class="form-textarea" id="result-notes" rows="2" placeholder="Training observations..."></textarea>
                 </div>
                 
                 <div class="form-group">
                     <label class="form-label">Feedback for Athlete</label>
-                    <textarea class="form-textarea" id="result-feedback" rows="2"></textarea>
+                    <textarea class="form-textarea" id="result-feedback" rows="2" placeholder="Constructive feedback..."></textarea>
                 </div>
                 
                 <div style="display: flex; gap: 1rem; justify-content: flex-end;">
@@ -1784,10 +2152,10 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     // Setup event listeners
     function setupEventListeners() {
-        // Form submissions
+        // Form submissions - pastikan hanya satu handler per form
         document.getElementById('inviteForm').addEventListener('submit', handleInviteSubmit);
-        document.getElementById('scheduleForm').addEventListener('submit', handleScheduleSubmit);
-        document.getElementById('resultForm').addEventListener('submit', handleResultSubmit);
+        document.getElementById('scheduleForm').addEventListener('submit', handleScheduleSubmitMulti);
+        document.getElementById('resultForm').addEventListener('submit', handleResultSubmitSimple);
         
         // Mobile toggle
         document.getElementById('mobileToggle').addEventListener('click', function() {
@@ -1841,10 +2209,10 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 loadInvitations();
                 break;
             case 'schedule':
-                loadSchedules();
+                loadSchedulesMulti(); // Gunakan multi version
                 break;
             case 'results':
-                loadResults();
+                loadResultsSimple(); // Gunakan simple version
                 break;
             case 'analytics':
                 loadAnalytics();
@@ -1866,16 +2234,33 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         }
         
         try {
+            // Add timeout to prevent hanging requests
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+            
             const response = await fetch(window.location.href, {
                 method: 'POST',
-                body: formData
+                body: formData,
+                signal: controller.signal
             });
+            
+            clearTimeout(timeoutId);
+            
+            if (!response.ok) {
+                throw new Error(`HTTP error! status: ${response.status}`);
+            }
             
             const result = await response.json();
             return result;
+            
         } catch (error) {
             console.error('Request error:', error);
-            return { success: false, message: 'Network error' };
+            
+            if (error.name === 'AbortError') {
+                return { success: false, message: 'Request timeout - please try again' };
+            }
+            
+            return { success: false, message: error.message || 'Network error' };
         }
     }
 
@@ -1903,37 +2288,59 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     // Dashboard functions
     async function loadDashboardStats() {
-        const result = await makeRequest('get_dashboard_stats');
-        if (result.success) {
-            const stats = result.data;
-            document.getElementById('statsGrid').innerHTML = `
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-title">Total Athletes</span>
-                        <span class="stat-icon">👥</span>
+        const container = document.getElementById('statsGrid');
+        
+        try {
+            // Show loading
+            container.innerHTML = '<div class="loading" style="margin: 2rem auto; display: block;"></div>';
+            
+            const result = await makeRequest('get_dashboard_stats');
+            
+            if (result.success) {
+                const stats = result.data;
+                container.innerHTML = `
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Total Athletes</span>
+                            <span class="stat-icon">👥</span>
+                        </div>
+                        <div class="stat-value">${stats.total_athletes || 0}</div>
                     </div>
-                    <div class="stat-value">${stats.total_athletes || 0}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-title">Monthly Sessions</span>
-                        <span class="stat-icon">📅</span>
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Monthly Sessions</span>
+                            <span class="stat-icon">📅</span>
+                        </div>
+                        <div class="stat-value">${stats.monthly_sessions || 0}</div>
                     </div>
-                    <div class="stat-value">${stats.monthly_sessions || 0}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-title">Completed Sessions</span>
-                        <span class="stat-icon">✅</span>
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Completed Sessions</span>
+                            <span class="stat-icon">✅</span>
+                        </div>
+                        <div class="stat-value">${stats.completed_sessions || 0}</div>
                     </div>
-                    <div class="stat-value">${stats.completed_sessions || 0}</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-title">Avg Performance</span>
-                        <span class="stat-icon">📈</span>
+                    <div class="stat-card">
+                        <div class="stat-header">
+                            <span class="stat-title">Avg Performance</span>
+                            <span class="stat-icon">📈</span>
+                        </div>
+                        <div class="stat-value">${stats.avg_performance || 0}%</div>
                     </div>
-                    <div class="stat-value">${stats.avg_performance || 0}%</div>
+                `;
+            } else {
+                throw new Error(result.message || 'Failed to load stats');
+            }
+            
+        } catch (error) {
+            console.error('Error loading dashboard stats:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Error Loading Stats</h3>
+                    <p>${error.message}</p>
+                    <button class="btn btn-primary" onclick="loadDashboardStats()">
+                        Try Again
+                    </button>
                 </div>
             `;
         }
@@ -1941,64 +2348,86 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     // Athletes functions
     async function loadAthletes() {
-        const result = await makeRequest('get_my_athletes');
-        if (result.success) {
-            athletesData = result.data || [];
-            const container = document.getElementById('athletesContainer');
+        const container = document.getElementById('athletesContainer');
+        
+        try {
+            // Show loading
+            container.innerHTML = '<div class="loading" style="margin: 2rem auto; display: block;"></div>';
             
-            if (athletesData.length === 0) {
-                container.innerHTML = `
-                    <div class="empty-state">
-                        <h3>No athletes yet</h3>
-                        <p>Start by inviting athletes to join your training program</p>
-                        <button class="btn btn-primary" onclick="showInviteModal()">
-                            Send First Invitation
-                        </button>
-                    </div>
-                `;
+            const result = await makeRequest('get_my_athletes');
+            
+            if (result.success) {
+                athletesData = result.data || [];
+                
+                if (athletesData.length === 0) {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <h3>No athletes yet</h3>
+                            <p>Start by inviting athletes to join your training program</p>
+                            <button class="btn btn-primary" onclick="showInviteModal()">
+                                Send First Invitation
+                            </button>
+                        </div>
+                    `;
+                } else {
+                    container.innerHTML = athletesData.map(athlete => `
+                        <div class="athlete-card">
+                            <div class="athlete-info">
+                                <div class="athlete-avatar">
+                                    ${getInitials(athlete.full_name)}
+                                </div>
+                                <div class="athlete-details">
+                                    <h3>${athlete.full_name}</h3>
+                                    <p>@${athlete.username} • ${athlete.sport || 'Athlete'} • ${athlete.position || 'N/A'}</p>
+                                </div>
+                            </div>
+                            <div class="athlete-stats">
+                                <div class="stat-item">
+                                    <div class="stat-item-value">${athlete.total_sessions || 0}</div>
+                                    <div class="stat-item-label">Sessions</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-item-value">${athlete.completed_sessions || 0}</div>
+                                    <div class="stat-item-label">Completed</div>
+                                </div>
+                                <div class="stat-item">
+                                    <div class="stat-item-value">${Math.round(athlete.avg_performance || 0)}%</div>
+                                    <div class="stat-item-label">Performance</div>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                <button class="btn btn-primary" onclick="scheduleTrainingFor(${athlete.id})">
+                                    Schedule Training
+                                </button>
+                                <button class="btn btn-info" onclick="viewAthleteDetails(${athlete.id})">
+                                    View Details
+                                </button>
+                                <button class="btn btn-danger" onclick="removeAthlete(${athlete.id})">
+                                    Remove
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                // Update athlete selects
+                updateAthleteSelects();
+                
             } else {
-                container.innerHTML = athletesData.map(athlete => `
-                    <div class="athlete-card">
-                        <div class="athlete-info">
-                            <div class="athlete-avatar">
-                                ${getInitials(athlete.full_name)}
-                            </div>
-                            <div class="athlete-details">
-                                <h3>${athlete.full_name}</h3>
-                                <p>@${athlete.username} • ${athlete.sport || 'Athlete'} • ${athlete.position || 'N/A'}</p>
-                            </div>
-                        </div>
-                        <div class="athlete-stats">
-                            <div class="stat-item">
-                                <div class="stat-item-value">${athlete.total_sessions || 0}</div>
-                                <div class="stat-item-label">Sessions</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-item-value">${athlete.completed_sessions || 0}</div>
-                                <div class="stat-item-label">Completed</div>
-                            </div>
-                            <div class="stat-item">
-                                <div class="stat-item-value">${Math.round(athlete.avg_performance || 0)}%</div>
-                                <div class="stat-item-label">Performance</div>
-                            </div>
-                        </div>
-                        <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
-                            <button class="btn btn-primary" onclick="scheduleTrainingFor(${athlete.id})">
-                                📅 Schedule Training
-                            </button>
-                            <button class="btn btn-info" onclick="viewAthleteDetails(${athlete.id})">
-                                📊 View Details
-                            </button>
-                            <button class="btn btn-danger" onclick="removeAthlete(${athlete.id})">
-                                🗑️ Remove
-                            </button>
-                        </div>
-                    </div>
-                `).join('');
+                throw new Error(result.message || 'Failed to load athletes');
             }
             
-            // Update athlete selects
-            updateAthleteSelects();
+        } catch (error) {
+            console.error('Error loading athletes:', error);
+            container.innerHTML = `
+                <div class="empty-state">
+                    <h3>Error Loading Athletes</h3>
+                    <p>${error.message}</p>
+                    <button class="btn btn-primary" onclick="loadAthletes()">
+                        Try Again
+                    </button>
+                </div>
+            `;
         }
     }
 
@@ -2460,8 +2889,6 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         }
     }
 
-<<<<<<< Updated upstream
-=======
     // Enhanced athlete management functions
     async function removeAthlete(id) {
         if (!confirm('Remove this athlete from your program? (This can be undone later)')) return;
@@ -2520,6 +2947,56 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             }
         });
     }
+
+    async function handleResultSubmitSimple(e) {
+        e.preventDefault();
+        
+        const sessionId = document.getElementById('result-session').value;
+        const athleteId = document.getElementById('result-athlete-id').value;
+        const attendance = document.getElementById('result-attendance').value;
+        const performance = document.getElementById('result-performance').value;
+        const notes = document.getElementById('result-notes').value;
+        const feedback = document.getElementById('result-feedback').value;
+        
+        // Manual validation
+        if (!sessionId) {
+            showNotification('Please select a training session', 'error');
+            return;
+        }
+        
+        if (!athleteId) {
+            showNotification('Unable to determine athlete for this session', 'error');
+            return;
+        }
+        
+        // Prepare single athlete result data
+        const resultsData = {};
+        resultsData[athleteId] = {
+            attendance: attendance,
+            performance: performance,
+            notes: notes,
+            feedback: feedback
+        };
+        
+        const data = {
+            schedule_id: sessionId,
+            results_data: JSON.stringify(resultsData),
+            general_notes: ''
+        };
+        
+        const result = await makeRequest('add_training_result_simple', data);
+        
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            closeModal('resultModal');
+            document.getElementById('resultForm').reset();
+            const hiddenField = document.getElementById('result-athlete-id');
+            if (hiddenField) hiddenField.value = '';
+            loadSectionData(currentSection);
+        }
+    }
+
 
     async function confirmPermanentDelete(athleteId, athleteName, buttonElement) {
         const confirmText = document.getElementById('deleteConfirmText').value;
@@ -2807,7 +3284,6 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         container.appendChild(template);
     }
 
->>>>>>> Stashed changes
     // Helper functions
     function getInitials(name) {
         return name.split(' ').map(n => n[0]).join('').toUpperCase().substr(0, 2);
@@ -2881,9 +3357,11 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
     function showScheduleModal() {
         if (athletesData.length === 0) {
             loadAthletes().then(() => {
+                updateAthleteCheckboxes();
                 document.getElementById('scheduleModal').style.display = 'block';
             });
         } else {
+            updateAthleteCheckboxes();
             document.getElementById('scheduleModal').style.display = 'block';
         }
     }
@@ -2908,14 +3386,29 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
 
     function showResultModal() {
         if (schedulesData.length === 0) {
-            loadSchedules().then(() => {
-                loadMetricTemplates(); // Load templates
+            loadSchedulesMulti().then(() => {
+                updateSessionSelectSimple();
                 document.getElementById('resultModal').style.display = 'block';
             });
         } else {
-            loadMetricTemplates(); // Load templates
+            updateSessionSelectSimple();
             document.getElementById('resultModal').style.display = 'block';
         }
+    }
+
+    function updateSessionSelectSimple() {
+        const select = document.getElementById('result-session');
+        select.innerHTML = '<option value="">Select Session</option>';
+        
+        // Hanya tampilkan session yang sudah completed atau scheduled
+        const availableSessions = schedulesData.filter(s => s.status === 'scheduled' || s.status === 'completed');
+        availableSessions.forEach(session => {
+            select.innerHTML += `
+                <option value="${session.id}" data-participants="${session.participant_ids}">
+                    ${session.title} - ${session.participant_count} athletes (${session.schedule_date})
+                </option>
+            `;
+        });
     }
 
     function closeModal(modalId) {
@@ -2926,18 +3419,24 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         const form = modal.querySelector('form');
         if (form) {
             form.reset();
-            form.noValidate = false; // Reset validation
             
-            // Clear custom fields for result modal
+            // Special reset untuk multi-athlete selection
+            if (modalId === 'scheduleModal') {
+                document.querySelectorAll('#athlete-checkboxes input[type="checkbox"]').forEach(cb => cb.checked = false);
+                const selectAllBox = document.getElementById('select-all-athletes');
+                if (selectAllBox) {
+                    selectAllBox.checked = false;
+                    selectAllBox.indeterminate = false;
+                }
+            }
+            
+            // Special reset untuk result modal
             if (modalId === 'resultModal') {
-                const customContainer = document.getElementById('custom-fields-container');
-                if (customContainer) {
-                    customContainer.innerHTML = '';
-                }
-                const templateSelect = document.getElementById('result-template');
-                if (templateSelect) {
-                    templateSelect.value = '';
-                }
+                const athleteIdField = document.getElementById('result-athlete-id');
+                if (athleteIdField) athleteIdField.value = '';
+                
+                const athleteNameField = document.getElementById('result-athlete-name');
+                if (athleteNameField) athleteNameField.value = '';
             }
         }
     }
@@ -2975,6 +3474,32 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         
         if (result.success) {
             loadSchedules();
+        }
+    }
+
+    function updateResultAthleteSimple(sessionId) {
+        const sessionSelect = document.getElementById('result-session');
+        const selectedOption = sessionSelect.querySelector(`option[value="${sessionId}"]`);
+        const athleteNameField = document.getElementById('result-athlete-name');
+        const athleteIdField = document.getElementById('result-athlete-id');
+        
+        if (selectedOption && selectedOption.dataset.participants) {
+            const participantIds = selectedOption.dataset.participants.split(',');
+            if (participantIds.length === 1) {
+                // Single athlete - auto select
+                const athlete = athletesData.find(a => a.id == participantIds[0]);
+                if (athlete) {
+                    athleteNameField.value = athlete.full_name;
+                    athleteIdField.value = athlete.id;
+                }
+            } else {
+                // Multiple athletes - show selection
+                athleteNameField.value = `Multiple athletes (${participantIds.length})`;
+                athleteIdField.value = '';
+                
+                // Suggest using bulk entry
+                showNotification('This session has multiple athletes. Use "Add Results for All" for better experience.', 'info');
+            }
         }
     }
 
@@ -3046,6 +3571,743 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         }
     }
 
+    async function handleScheduleSubmitMulti(e) {
+        e.preventDefault();
+        
+        // Get selected athletes
+        const selectedAthletes = [];
+        const checkboxes = document.querySelectorAll('#athlete-selection input[type="checkbox"]:checked');
+        checkboxes.forEach(cb => selectedAthletes.push(cb.value));
+        
+        const title = document.getElementById('schedule-title').value;
+        const scheduleDate = document.getElementById('schedule-date').value;
+        const startTime = document.getElementById('schedule-time').value;
+        
+        // Manual validation
+        if (selectedAthletes.length === 0) {
+            showNotification('Please select at least one athlete', 'error');
+            return;
+        }
+        if (!title || title.trim() === '') {
+            showNotification('Session title is required', 'error');
+            document.getElementById('schedule-title').focus();
+            return;
+        }
+        if (!scheduleDate) {
+            showNotification('Date is required', 'error');
+            document.getElementById('schedule-date').focus();
+            return;
+        }
+        if (!startTime) {
+            showNotification('Start time is required', 'error');
+            document.getElementById('schedule-time').focus();
+            return;
+        }
+        
+        const data = {
+            athlete_ids: JSON.stringify(selectedAthletes),
+            title: title.trim(),
+            type: document.getElementById('schedule-type').value,
+            schedule_date: scheduleDate,
+            start_time: startTime,
+            duration: document.getElementById('schedule-duration').value,
+            intensity: document.getElementById('schedule-intensity').value,
+            location: document.getElementById('schedule-location').value,
+            description: document.getElementById('schedule-description').value,
+            max_participants: selectedAthletes.length
+        };
+        
+        const result = await makeRequest('add_training_schedule_multi', data);
+        
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            closeModal('scheduleModal');
+            document.getElementById('scheduleForm').reset();
+            document.querySelectorAll('#athlete-selection input[type="checkbox"]').forEach(cb => cb.checked = false);
+            if (currentSection === 'schedule') {
+                loadSchedulesMulti();
+            }
+        }
+    }
+
+    async function handleBulkResultSubmit(e) {
+        e.preventDefault();
+        
+        const scheduleId = document.getElementById('bulk-schedule-id').value;
+        const generalNotes = document.getElementById('bulk-general-notes').value;
+        const formData = new FormData(e.target);
+        
+        // Collect all athlete data
+        const resultsData = {};
+        for (let [key, value] of formData.entries()) {
+            if (key.startsWith('attendance_') || key.startsWith('performance_') || key.startsWith('notes_')) {
+                const [field, athleteId] = key.split('_');
+                if (!resultsData[athleteId]) {
+                    resultsData[athleteId] = {};
+                }
+                resultsData[athleteId][field] = value;
+            }
+        }
+        
+        const data = {
+            schedule_id: scheduleId,
+            results_data: JSON.stringify(resultsData),
+            general_notes: generalNotes
+        };
+        
+        const result = await makeRequest('add_training_result_simple', data);
+        
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            if (currentSection === 'schedule') {
+                loadSchedulesMulti();
+            }
+        }
+    }
+
+    async function showBulkResultModal(scheduleId) {
+        // Get participants for this session
+        const result = await makeRequest('get_training_participants', { schedule_id: scheduleId });
+        if (!result.success) {
+            showNotification('Failed to load participants', 'error');
+            return;
+        }
+        
+        const participants = result.data || [];
+        if (participants.length === 0) {
+            showNotification('No participants found for this session', 'error');
+            return;
+        }
+        
+        // Create bulk result modal
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 900px; max-height: 80vh; overflow-y: auto;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Training Results - Bulk Entry</h2>
+                
+                <form id="bulkResultForm" novalidate>
+                    <input type="hidden" id="bulk-schedule-id" value="${scheduleId}">
+                    
+                    <div class="form-group">
+                        <label class="form-label">General Notes (applies to all athletes)</label>
+                        <textarea class="form-textarea" id="bulk-general-notes" rows="2" 
+                                placeholder="Training session overview, conditions, etc."></textarea>
+                    </div>
+                    
+                    <h3 style="margin: 1.5rem 0 1rem; color: var(--text-secondary);">Individual Athlete Results</h3>
+                    
+                    <div id="bulk-participants-container">
+                        ${participants.map(participant => `
+                            <div class="athlete-result-card" style="background: var(--surface-bg); border: 1px solid var(--glass-border); border-radius: 12px; padding: 1rem; margin: 1rem 0;">
+                                <div style="display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem;">
+                                    <div class="athlete-avatar" style="width: 40px; height: 40px; background: var(--accent-primary); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; color: white;">
+                                        ${getInitials(participant.full_name)}
+                                    </div>
+                                    <div>
+                                        <h4>${participant.full_name}</h4>
+                                        <small style="color: var(--text-tertiary);">@${participant.username}</small>
+                                    </div>
+                                </div>
+                                
+                                <div style="display: grid; grid-template-columns: 1fr 1fr 2fr; gap: 1rem; align-items: start;">
+                                    <div class="form-group" style="margin: 0;">
+                                        <label class="form-label">Attendance</label>
+                                        <select class="form-select" name="attendance_${participant.athlete_id}">
+                                            <option value="present">Present</option>
+                                            <option value="late">Late</option>
+                                            <option value="absent">Absent</option>
+                                            <option value="excused">Excused</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group" style="margin: 0;">
+                                        <label class="form-label">Performance</label>
+                                        <select class="form-select" name="performance_${participant.athlete_id}">
+                                            <option value="">Not Assessed</option>
+                                            <option value="excellent">Excellent</option>
+                                            <option value="good">Good</option>
+                                            <option value="average">Average</option>
+                                            <option value="needs_improvement">Needs Improvement</option>
+                                        </select>
+                                    </div>
+                                    
+                                    <div class="form-group" style="margin: 0;">
+                                        <label class="form-label">Individual Notes</label>
+                                        <textarea class="form-textarea" name="notes_${participant.athlete_id}" rows="2" 
+                                                placeholder="Individual feedback for ${participant.full_name}"></textarea>
+                                    </div>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                    
+                    <div style="display: flex; gap: 1rem; justify-content: space-between; margin-top: 2rem;">
+                        <button type="button" class="btn btn-info" onclick="setAllAttendance('present')">
+                            All Present
+                        </button>
+                        <div>
+                            <button type="button" class="btn" onclick="this.closest('.modal').remove()">Cancel</button>
+                            <button type="submit" class="btn btn-primary">Save All Results</button>
+                        </div>
+                    </div>
+                </form>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Handle form submission
+        document.getElementById('bulkResultForm').addEventListener('submit', handleBulkResultSubmit);
+    }
+
+
+    async function loadSchedulesMulti() {
+        const result = await makeRequest('get_training_schedules_multi');
+        if (result.success) {
+            schedulesData = result.data || [];
+            const container = document.getElementById('scheduleContainer');
+            
+            if (schedulesData.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No training sessions scheduled</h3>
+                        <p>Create training sessions for your athletes</p>
+                    </div>
+                `;
+            } else {
+                // Group by date
+                const grouped = {};
+                schedulesData.forEach(session => {
+                    const date = session.schedule_date;
+                    if (!grouped[date]) grouped[date] = [];
+                    grouped[date].push(session);
+                });
+                
+                let html = '';
+                for (const date in grouped) {
+                    html += `
+                        <h3 style="margin: 1.5rem 0 1rem; color: var(--text-secondary);">
+                            ${new Date(date).toLocaleDateString('id-ID', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })}
+                        </h3>
+                    `;
+                    
+                    html += grouped[date].map(session => `
+                        <div class="training-card">
+                            <div class="training-header">
+                                <div>
+                                    <h3 class="training-title">${session.title}</h3>
+                                    <p style="color: var(--text-tertiary);">
+                                        ${session.participant_count} athletes: ${session.participant_names ? session.participant_names.substring(0, 100) + (session.participant_names.length > 100 ? '...' : '') : 'No participants'}
+                                    </p>
+                                </div>
+                                <span class="badge badge-${getStatusColor(session.status)}">
+                                    ${session.status}
+                                </span>
+                            </div>
+                            <div class="training-meta">
+                                <div class="meta-item">
+                                    <span>🕐</span> ${session.start_time} (${session.duration} min)
+                                </div>
+                                <div class="meta-item">
+                                    <span>👥</span> ${session.participant_count} athletes
+                                </div>
+                                <div class="meta-item">
+                                    <span>📍</span> ${session.location || 'TBD'}
+                                </div>
+                                <div class="meta-item">
+                                    <span>🏃</span> ${session.type}
+                                </div>
+                                <div class="meta-item">
+                                    <span>💪</span> ${session.intensity || 'moderate'}
+                                </div>
+                            </div>
+                            ${session.description ? `
+                                <p style="margin-top: 1rem; color: var(--text-tertiary);">${session.description}</p>
+                            ` : ''}
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
+                                ${session.status === 'scheduled' ? `
+                                    <button class="btn btn-success" onclick="showBulkResultModal(${session.id})">
+                                        📝 Add Results for All
+                                    </button>
+                                    <button class="btn btn-info" onclick="markAsCompleted(${session.id})">
+                                        ✅ Mark Completed
+                                    </button>
+                                ` : ''}
+                                <button class="btn btn-info" onclick="viewParticipants(${session.id})">
+                                    👥 View Participants
+                                </button>
+                                <button class="btn btn-danger" onclick="cancelSession(${session.id})">
+                                    ❌ Cancel
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                }
+                
+                container.innerHTML = html || '<div class="empty-state"><h3>No sessions found</h3></div>';
+            }
+        }
+    }
+
+    async function removeAthlete(id) {
+        if (!confirm('Remove this athlete from your program? (This can be undone later)')) return;
+        
+        const result = await makeRequest('remove_athlete', { athlete_id: id });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            loadAthletes();
+            loadDashboardStats(); // Refresh stats
+        }
+    }
+
+    function showDeleteConfirmation(athleteId, athleteName) {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 500px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2 style="color: var(--accent-danger); margin-bottom: 1rem;">⚠️ Permanently Delete Athlete</h2>
+                
+                <div style="background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); border-radius: 8px; padding: 1rem; margin: 1rem 0;">
+                    <h4>This will permanently delete:</h4>
+                    <ul style="margin: 0.5rem 0 0 1rem; color: var(--text-secondary);">
+                        <li>Athlete profile: <strong>${athleteName}</strong></li>
+                        <li>All training schedules</li>
+                        <li>All training results</li>
+                        <li>All performance metrics</li>
+                        <li>All invitation history</li>
+                    </ul>
+                    <p style="margin-top: 1rem; font-weight: 600;">This action CANNOT be undone!</p>
+                </div>
+                
+                <div style="margin: 1.5rem 0;">
+                    <label style="display: block; margin-bottom: 0.5rem; font-weight: 600;">
+                        Type "DELETE ${athleteName}" to confirm:
+                    </label>
+                    <input type="text" id="deleteConfirmText" class="form-input" placeholder="DELETE ${athleteName}" style="width: 100%;">
+                </div>
+                
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" class="btn" onclick="this.closest('.modal').remove()">Cancel</button>
+                    <button type="button" class="btn btn-danger" onclick="confirmPermanentDelete(${athleteId}, '${athleteName}', this)">
+                        🗑️ Permanently Delete
+                    </button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+        
+        // Close modal when clicking outside
+        modal.addEventListener('click', function(e) {
+            if (e.target === modal) {
+                modal.remove();
+            }
+        });
+    }
+
+    async function showRemovedAthletes() {
+        const result = await makeRequest('get_removed_athletes');
+        
+        if (!result.success) {
+            showNotification('Failed to load removed athletes', 'error');
+            return;
+        }
+        
+        const removedAthletes = result.data || [];
+        
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content" style="max-width: 700px;">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Removed Athletes</h2>
+                
+                <div style="max-height: 400px; overflow-y: auto; margin: 1rem 0;">
+                    ${removedAthletes.length === 0 ? `
+                        <div class="empty-state">
+                            <h3>No removed athletes</h3>
+                            <p>Athletes you remove will appear here</p>
+                        </div>
+                    ` : removedAthletes.map(athlete => `
+                        <div class="athlete-card">
+                            <div class="athlete-info">
+                                <div class="athlete-avatar">
+                                    ${getInitials(athlete.full_name)}
+                                </div>
+                                <div class="athlete-details">
+                                    <h3>${athlete.full_name}</h3>
+                                    <p>@${athlete.username} • Removed: ${new Date(athlete.removed_at).toLocaleDateString()}</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                                <button class="btn btn-success" onclick="restoreAthlete(${athlete.id})">
+                                    ↺ Restore
+                                </button>
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+                    <button class="btn" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    async function deleteTemplate(templateId, templateName) {
+        if (!confirm(`Delete template "${templateName}"? This cannot be undone.`)) return;
+        
+        const result = await makeRequest('delete_metric_template', { template_id: templateId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            loadTemplates();
+            loadMetricTemplates(); // Refresh dropdown
+        }
+    }  
+
+    async function viewTemplate(templateId) {
+        const result = await makeRequest('get_template_fields', { template_id: templateId });
+        
+        if (!result.success) {
+            showNotification('Failed to load template fields', 'error');
+            return;
+        }
+        
+        const fields = result.data || [];
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Template Fields</h2>
+                
+                <div style="max-height: 400px; overflow-y: auto;">
+                    ${fields.map(field => `
+                        <div style="padding: 1rem; margin: 0.5rem 0; border: 1px solid var(--glass-border); border-radius: 8px;">
+                            <strong>${field.field_name}</strong>
+                            ${field.field_unit ? ` (${field.field_unit})` : ''}
+                            ${parseInt(field.is_required) ? ' <span style="color: var(--accent-danger);">*</span>' : ''}
+                            <br>
+                            <small>Type: ${field.field_type}</small>
+                            ${field.min_value !== null ? ` • Min: ${field.min_value}` : ''}
+                            ${field.max_value !== null ? ` • Max: ${field.max_value}` : ''}
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end; margin-top: 1rem;">
+                    <button class="btn" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }  
+
+    function showBulkActions() {
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Bulk Actions</h2>
+                
+                <div style="display: grid; gap: 1rem; margin: 2rem 0;">
+                    <button class="btn btn-primary" onclick="showBulkSchedule()">
+                        📅 Schedule Training for Multiple Athletes
+                    </button>
+                    <button class="btn btn-info" onclick="exportAthleteData()">
+                        📊 Export Athlete Data
+                    </button>
+                    <button class="btn btn-warning" onclick="showRemovedAthletes()">
+                        👥 View Removed Athletes
+                    </button>
+                    <button class="btn btn-success" onclick="makeRequest('sync_athletes').then(r => showNotification(r.message, r.success ? 'success' : 'error'))">
+                        🔄 Sync Athlete Profiles
+                    </button>
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end;">
+                    <button class="btn" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }
+
+    function initializeSearch() {
+        // Add search functionality to athletes section
+        const athletesSection = document.getElementById('athletes-section');
+        const searchHTML = `
+            <div style="margin-bottom: 1rem;">
+                <input type="text" class="form-input" id="athlete-search" 
+                    placeholder="Search athletes..." 
+                    onkeyup="filterAthletes(this.value)"
+                    style="width: 300px;">
+            </div>
+        `;
+        
+        const athletesCard = athletesSection.querySelector('.content-card');
+        const cardHeader = athletesCard.querySelector('.card-header');
+        cardHeader.insertAdjacentHTML('afterend', searchHTML);
+    }
+
+    function filterAthletes(searchTerm) {
+        const athleteCards = document.querySelectorAll('.athlete-card');
+        const term = searchTerm.toLowerCase();
+        
+        athleteCards.forEach(card => {
+            const name = card.querySelector('h3').textContent.toLowerCase();
+            const username = card.querySelector('p').textContent.toLowerCase();
+            
+            if (name.includes(term) || username.includes(term)) {
+                card.style.display = 'block';
+            } else {
+                card.style.display = 'none';
+            }
+        });
+    }
+
+    function exportAthleteData() {
+        // Create export functionality
+        const exportData = {
+            athletes: athletesData,
+            schedules: schedulesData,
+            exportDate: new Date().toISOString()
+        };
+        
+        const dataStr = JSON.stringify(exportData, null, 2);
+        const dataBlob = new Blob([dataStr], {type: 'application/json'});
+        const url = URL.createObjectURL(dataBlob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `athlete_data_${new Date().toISOString().split('T')[0]}.json`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
+        
+        showNotification('Data exported successfully', 'success');
+    }
+
+    async function loadTemplates() {
+        const result = await makeRequest('get_metric_templates');
+        if (result.success) {
+            const container = document.getElementById('templatesContainer');
+            const templates = result.data || [];
+            
+            if (templates.length === 0) {
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <h3>No metric templates</h3>
+                        <p>Create custom templates to track specific metrics</p>
+                    </div>
+                `;
+            } else {
+                container.innerHTML = templates.map(template => `
+                    <div class="content-card">
+                        <div class="card-header">
+                            <div>
+                                <h3>${template.template_name}</h3>
+                                <p style="color: var(--text-tertiary);">
+                                    ${template.sport_category} • ${template.field_count} fields
+                                </p>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem;">
+                                <button class="btn btn-info" onclick="viewTemplate(${template.id})">
+                                    View Fields
+                                </button>
+                                <button class="btn btn-danger" onclick="deleteTemplate(${template.id}, '${template.template_name}')">
+                                    Delete
+                                </button>
+                            </div>
+                        </div>
+                        <p style="color: var(--text-tertiary);">
+                            Fields: ${template.field_names || 'No fields defined'}
+                        </p>
+                    </div>
+                `).join('');
+            }
+        }
+    }    
+
+    async function loadMetricTemplates() {
+        const result = await makeRequest('get_metric_templates');
+        if (result.success) {
+            const select = document.getElementById('result-template');
+            select.innerHTML = '<option value="">Select Template</option>';
+            
+            result.data.forEach(template => {
+                select.innerHTML += `
+                    <option value="${template.id}">
+                        ${template.template_name} (${template.field_count} fields)
+                    </option>
+                `;
+            });
+        }
+    }
+
+    async function restoreAthlete(athleteId) {
+        if (!confirm('Restore this athlete to your program?')) return;
+        
+        const result = await makeRequest('restore_athlete', { athlete_id: athleteId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadAthletes();
+            loadDashboardStats();
+        }
+    }
+
+    function updateScheduleModalForMultiSelect() {
+        const modal = document.getElementById('scheduleModal');
+        const athleteSelectDiv = modal.querySelector('#schedule-athlete').closest('.form-group');
+        
+        athleteSelectDiv.innerHTML = `
+            <label class="form-label">Select Athletes <span style="color: red;">*</span></label>
+            <div style="max-height: 200px; overflow-y: auto; border: 1px solid var(--glass-border); border-radius: 8px; padding: 0.5rem;">
+                <div id="athlete-selection">
+                    <div style="margin-bottom: 0.5rem;">
+                        <label style="display: flex; align-items: center; gap: 0.5rem;">
+                            <input type="checkbox" id="select-all-athletes" onchange="toggleAllAthletes(this.checked)">
+                            <strong>Select All</strong>
+                        </label>
+                    </div>
+                    <div id="athlete-checkboxes">
+                        <!-- Will be populated dynamically -->
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    function toggleAllAthletes(checked) {
+        document.querySelectorAll('#athlete-checkboxes input[type="checkbox"]').forEach(cb => {
+            cb.checked = checked;
+        });
+    }
+
+    function updateAthleteCheckboxes() {
+        const container = document.getElementById('athlete-checkboxes');
+        if (!container) return;
+        
+        container.innerHTML = athletesData.map(athlete => `
+            <label style="display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; cursor: pointer;">
+                <input type="checkbox" value="${athlete.id}" onchange="updateSelectAllState()">
+                <div class="athlete-avatar" style="width: 24px; height: 24px; font-size: 0.7rem;">
+                    ${getInitials(athlete.full_name)}
+                </div>
+                <span>${athlete.full_name} (@${athlete.username})</span>
+            </label>
+        `).join('');
+    }
+
+    function updateSelectAllState() {
+        const checkboxes = document.querySelectorAll('#athlete-checkboxes input[type="checkbox"]');
+        const checked = document.querySelectorAll('#athlete-checkboxes input[type="checkbox"]:checked');
+        const selectAll = document.getElementById('select-all-athletes');
+        
+        selectAll.indeterminate = checked.length > 0 && checked.length < checkboxes.length;
+        selectAll.checked = checked.length === checkboxes.length;
+    }
+
+    async function viewParticipants(scheduleId) {
+        const result = await makeRequest('get_training_participants', { schedule_id: scheduleId });
+        if (!result.success) {
+            showNotification('Failed to load participants', 'error');
+            return;
+        }
+        
+        const participants = result.data || [];
+        const modal = document.createElement('div');
+        modal.className = 'modal';
+        modal.style.display = 'block';
+        modal.innerHTML = `
+            <div class="modal-content">
+                <span class="close" onclick="this.closest('.modal').remove()">&times;</span>
+                <h2>Training Participants</h2>
+                
+                <div style="max-height: 400px; overflow-y: auto; margin: 1rem 0;">
+                    ${participants.map(participant => `
+                        <div class="athlete-card" style="margin: 0.5rem 0;">
+                            <div class="athlete-info">
+                                <div class="athlete-avatar">
+                                    ${getInitials(participant.full_name)}
+                                </div>
+                                <div class="athlete-details">
+                                    <h4>${participant.full_name}</h4>
+                                    <p style="color: var(--text-tertiary);">@${participant.username}</p>
+                                </div>
+                            </div>
+                            <div style="display: flex; gap: 0.5rem; align-items: center;">
+                                <span class="badge badge-${participant.registration_status === 'registered' ? 'primary' : 'success'}">
+                                    ${participant.registration_status}
+                                </span>
+                                ${participant.attendance_status ? `
+                                    <span class="badge badge-${participant.attendance_status === 'present' ? 'success' : 'warning'}">
+                                        ${participant.attendance_status}
+                                    </span>
+                                ` : ''}
+                                ${participant.has_result > 0 ? '<span class="badge badge-info">Has Result</span>' : ''}
+                            </div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div style="display: flex; justify-content: flex-end;">
+                    <button class="btn" onclick="this.closest('.modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+        document.body.appendChild(modal);
+    }    
+
+    async function confirmPermanentDelete(athleteId, athleteName, buttonElement) {
+        const confirmText = document.getElementById('deleteConfirmText').value;
+        const expectedText = `DELETE ${athleteName}`;
+        
+        if (confirmText !== expectedText) {
+            showNotification('Confirmation text does not match. Please type exactly: ' + expectedText, 'error');
+            return;
+        }
+        
+        // Disable button and show loading
+        buttonElement.disabled = true;
+        buttonElement.innerHTML = '<div class="loading"></div> Deleting...';
+        
+        const result = await makeRequest('permanently_delete_athlete', { athlete_id: athleteId });
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            document.querySelector('.modal').remove();
+            loadAthletes();
+            loadDashboardStats();
+        } else {
+            buttonElement.disabled = false;
+            buttonElement.innerHTML = '🗑️ Permanently Delete';
+        }
+    }
+
+    function setAllAttendance(status) {
+        document.querySelectorAll('select[name^="attendance_"]').forEach(select => {
+            select.value = status;
+        });
+    }
+
     function scheduleTrainingFor(athleteId) {
         document.getElementById('schedule-athlete').value = athleteId;
         showScheduleModal();
@@ -3066,6 +4328,26 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         if (confirm('Are you sure you want to logout?')) {
             window.location.href = '?logout=1';
         }
+    }
+
+    function getAttendanceColor(status) {
+        const colors = {
+            'present': 'success',
+            'late': 'warning', 
+            'absent': 'danger',
+            'excused': 'info'
+        };
+        return colors[status] || 'primary';
+    }
+
+    function getPerformanceColor(rating) {
+        const colors = {
+            'excellent': 'success',
+            'good': 'primary',
+            'average': 'warning',
+            'needs_improvement': 'danger'
+        };
+        return colors[rating] || 'primary';
     }
 
     // Close modals when clicking outside

@@ -87,6 +87,131 @@ function generateSecureToken($length = 32) {
     return bin2hex(random_bytes($length));
 }
 
+function validateInput($input, $type = 'string', $options = []) {
+    switch ($type) {
+        case 'int':
+            $result = filter_var($input, FILTER_VALIDATE_INT, $options);
+            return $result !== false ? $result : 0;
+            
+        case 'float':
+            $result = filter_var($input, FILTER_VALIDATE_FLOAT, $options);
+            return $result !== false ? $result : 0.0;
+            
+        case 'email':
+            return filter_var($input, FILTER_VALIDATE_EMAIL) ?: '';
+            
+        case 'url':
+            return filter_var($input, FILTER_VALIDATE_URL) ?: '';
+            
+        case 'date':
+            $date = DateTime::createFromFormat('Y-m-d', $input);
+            return $date && $date->format('Y-m-d') === $input ? $input : null;
+            
+        case 'time':
+            $time = DateTime::createFromFormat('H:i', $input);
+            return $time && $time->format('H:i') === $input ? $input : null;
+            
+        case 'username':
+            return preg_replace('/[^a-zA-Z0-9._-]/', '', trim($input));
+            
+        case 'alphanumeric':
+            return preg_replace('/[^a-zA-Z0-9]/', '', trim($input));
+            
+        default:
+            return htmlspecialchars(trim($input), ENT_QUOTES, 'UTF-8');
+    }
+}
+
+function checkRateLimit($key, $maxAttempts = 5, $timeWindow = 300) {
+    $pdo = getDBConnection();
+    
+    // Clean old attempts
+    $stmt = $pdo->prepare("
+        DELETE FROM rate_limits 
+        WHERE attempt_key = ? AND attempt_time < DATE_SUB(NOW(), INTERVAL ? SECOND)
+    ");
+    $stmt->execute([$key, $timeWindow]);
+    
+    // Count current attempts
+    $stmt = $pdo->prepare("
+        SELECT COUNT(*) FROM rate_limits 
+        WHERE attempt_key = ?
+    ");
+    $stmt->execute([$key]);
+    $attempts = $stmt->fetchColumn();
+    
+    if ($attempts >= $maxAttempts) {
+        return false;
+    }
+    
+    // Log this attempt
+    $stmt = $pdo->prepare("
+        INSERT INTO rate_limits (attempt_key, attempt_time, ip_address) 
+        VALUES (?, NOW(), ?)
+    ");
+    $stmt->execute([$key, $_SERVER['REMOTE_ADDR'] ?? 'unknown']);
+    
+    return true;
+}
+
+function initializeSecurityTables($pdo) {
+    $tables = [
+        "CREATE TABLE IF NOT EXISTS rate_limits (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            attempt_key VARCHAR(255) NOT NULL,
+            attempt_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            ip_address VARCHAR(45) NOT NULL,
+            INDEX idx_key_time (attempt_key, attempt_time)
+        )",
+        
+        "CREATE TABLE IF NOT EXISTS security_logs (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            event_type VARCHAR(50) NOT NULL,
+            user_id INT NULL,
+            ip_address VARCHAR(45) NOT NULL,
+            user_agent TEXT NULL,
+            event_data JSON NULL,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_event_type (event_type),
+            INDEX idx_user_id (user_id),
+            INDEX idx_created_at (created_at)
+        )",
+        
+        "CREATE TABLE IF NOT EXISTS failed_logins (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) NOT NULL,
+            ip_address VARCHAR(45) NOT NULL,
+            attempt_time TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            user_agent TEXT NULL,
+            INDEX idx_username (username),
+            INDEX idx_ip (ip_address),
+            INDEX idx_time (attempt_time)
+        )"
+    ];
+    
+    foreach ($tables as $sql) {
+        try {
+            $pdo->exec($sql);
+        } catch (PDOException $e) {
+            error_log("Security table creation error: " . $e->getMessage());
+        }
+    }
+}
+
+function logSecurityEvent($event, $details = []) {
+    $logData = [
+        'timestamp' => date('Y-m-d H:i:s'),
+        'event' => $event,
+        'ip' => $_SERVER['REMOTE_ADDR'] ?? 'unknown',
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? 'unknown',
+        'session_id' => session_id(),
+        'user_id' => $_SESSION['user_id'] ?? null,
+        'details' => $details
+    ];
+    
+    error_log("SECURITY: " . json_encode($logData));
+}
+
 // Fungsi untuk hash password
 function hashPassword($password) {
     return password_hash($password, PASSWORD_BCRYPT, ['cost' => BCRYPT_COST]);
