@@ -91,6 +91,89 @@ function sanitizeinputloc($input, $type = 'string') {
     }
 }
 
+function cleanupInvitations($pdo, $coachId) {
+    try {
+        // Clean up expired invitations (older than 30 days and still pending)
+        $stmt = $pdo->prepare("
+            UPDATE coach_athlete_invitations 
+            SET status = 'expired' 
+            WHERE coach_id = ? 
+            AND status = 'pending' 
+            AND created_at < DATE_SUB(NOW(), INTERVAL 30 DAY)
+        ");
+        $stmt->execute([$coachId]);
+        
+        // Find accepted invitations that don't have corresponding athlete profiles
+        $stmt = $pdo->prepare("
+            SELECT DISTINCT i.athlete_id, i.coach_id
+            FROM coach_athlete_invitations i
+            LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+            WHERE i.coach_id = ? AND i.status = 'accepted' AND ap.id IS NULL
+        ");
+        $stmt->execute([$coachId]);
+        $missingProfiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        
+        // Create missing profiles
+        foreach ($missingProfiles as $missing) {
+            $stmt = $pdo->prepare("
+                INSERT INTO athlete_profiles 
+                (user_id, coach_id, sport, is_active, created_at) 
+                VALUES (?, ?, 'General', 1, NOW())
+                ON DUPLICATE KEY UPDATE coach_id = VALUES(coach_id), is_active = 1
+            ");
+            $stmt->execute([$missing['athlete_id'], $missing['coach_id']]);
+        }
+        
+        error_log("Cleanup completed for coach_id: " . $coachId);
+    } catch (Exception $e) {
+        error_log("Cleanup error: " . $e->getMessage());
+    }
+}
+
+function debugAthleteData($pdo, $coachId) {
+    error_log("=== DEBUG ATHLETE DATA FOR COACH $coachId ===");
+    
+    // Check invitations
+    $stmt = $pdo->prepare("
+        SELECT i.*, u.username as athlete_username, u.full_name
+        FROM coach_athlete_invitations i
+        LEFT JOIN users u ON i.athlete_id = u.id
+        WHERE i.coach_id = ? 
+        ORDER BY i.created_at DESC LIMIT 10
+    ");
+    $stmt->execute([$coachId]);
+    $invitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Invitations count: " . count($invitations));
+    error_log("Invitations: " . json_encode($invitations));
+    
+    // Check athlete profiles
+    $stmt = $pdo->prepare("
+        SELECT ap.*, u.username, u.full_name, u.role
+        FROM athlete_profiles ap
+        LEFT JOIN users u ON ap.user_id = u.id
+        WHERE ap.coach_id = ?
+    ");
+    $stmt->execute([$coachId]);
+    $profiles = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Profiles count: " . count($profiles));
+    error_log("Profiles: " . json_encode($profiles));
+    
+    // Check accepted invitations without profiles
+    $stmt = $pdo->prepare("
+        SELECT i.athlete_id, i.status, u.username
+        FROM coach_athlete_invitations i
+        LEFT JOIN users u ON i.athlete_id = u.id
+        LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+        WHERE i.coach_id = ? AND i.status = 'accepted' AND ap.id IS NULL
+    ");
+    $stmt->execute([$coachId]);
+    $orphaned = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Orphaned accepted invitations: " . count($orphaned));
+    error_log("Orphaned data: " . json_encode($orphaned));
+    
+    error_log("=== END DEBUG ===");
+}
+
 function jsonresloc($success, $message, $data = null) {
     header('Content-Type: application/json');
     $response = ['success' => $success, 'message' => $message];
@@ -99,6 +182,52 @@ function jsonresloc($success, $message, $data = null) {
     }
     echo json_encode($response, JSON_UNESCAPED_UNICODE);
     exit;
+}
+
+function debugInvitationData($pdo, $userId, $username) {
+    // Check if user exists in users table
+    $stmt = $pdo->prepare("SELECT id, username, role FROM users WHERE id = ?");
+    $stmt->execute([$userId]);
+    $user = $stmt->fetch(PDO::FETCH_ASSOC);
+    error_log("User data: " . json_encode($user));
+    
+    // Check all invitations in table
+    $stmt = $pdo->query("SELECT * FROM coach_athlete_invitations ORDER BY created_at DESC LIMIT 5");
+    $allInvitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("Recent invitations: " . json_encode($allInvitations));
+    
+    // Check specific invitations for this user
+    $stmt = $pdo->prepare("
+        SELECT * FROM coach_athlete_invitations 
+        WHERE athlete_id = ? OR athlete_username = ?
+    ");
+    $stmt->execute([$userId, $username]);
+    $userInvitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+    error_log("User invitations: " . json_encode($userInvitations));
+}
+
+function syncAthleteProfiles($pdo, $coachId) {
+    try {
+        // Create missing profiles for accepted invitations
+        $stmt = $pdo->prepare("
+            INSERT IGNORE INTO athlete_profiles (user_id, coach_id, sport, is_active, created_at)
+            SELECT DISTINCT i.athlete_id, i.coach_id, 'General', 1, NOW()
+            FROM coach_athlete_invitations i
+            LEFT JOIN athlete_profiles ap ON i.athlete_id = ap.user_id AND i.coach_id = ap.coach_id
+            WHERE i.coach_id = ? AND i.status = 'accepted' AND i.athlete_id IS NOT NULL AND ap.id IS NULL
+        ");
+        $result = $stmt->execute([$coachId]);
+        $created = $stmt->rowCount();
+        
+        if ($created > 0) {
+            error_log("Synced $created athlete profiles for coach $coachId");
+        }
+        
+        return $created;
+    } catch (Exception $e) {
+        error_log("Error syncing profiles: " . $e->getMessage());
+        return 0;
+    }
 }
 
 // Enhanced AJAX handlerlogin.html
@@ -436,7 +565,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             case 'get_users':
                 $stmt = $pdo->query("
                     SELECT id, username, full_name, email 
-                    FROM admin_users 
+                    FROM users 
                     WHERE is_active = 1 
                     ORDER BY username ASC
                 ");
@@ -474,6 +603,142 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 jsonresloc(true, 'Dashboard stats retrieved', $stats);
                 break;
                 
+            // ===== COACH INVITATIONS ACTIONS =====
+            case 'get_coach_invitations':
+                error_log("Getting invitations for user_id: " . $_SESSION['user_id'] . ", username: " . $_SESSION['username']);
+                
+                $stmt = $pdo->prepare("
+                    SELECT i.*, u.full_name as coach_name, u.username as coach_username
+                    FROM coach_athlete_invitations i
+                    JOIN users u ON i.coach_id = u.id
+                    WHERE i.athlete_id = ? OR (i.athlete_username = ? AND i.athlete_id IS NULL)
+                    ORDER BY i.created_at DESC
+                ");
+                $stmt->execute([$_SESSION['user_id'], $_SESSION['username']]);
+                $invitations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                error_log("Found invitations: " . count($invitations));
+                error_log("Invitations data: " . json_encode($invitations));
+
+                jsonresloc(true, 'Invitations retrieved', $invitations);
+                break;
+
+            case 'respond_to_invitation':
+                $invitationId = sanitizeinputloc($_POST['invitation_id'] ?? 0, 'int');
+                $response = sanitizeinputloc($_POST['response'] ?? '');
+                
+                if ($invitationId <= 0) {
+                    jsonresloc(false, 'ID invitation tidak valid');
+                }
+                
+                if (!in_array($response, ['accepted', 'rejected'])) {
+                    jsonresloc(false, 'Respons tidak valid');
+                }
+                
+                // Get invitation details
+                $stmt = $pdo->prepare("
+                    SELECT coach_id, athlete_username, athlete_id, status
+                    FROM coach_athlete_invitations 
+                    WHERE id = ? AND status = 'pending'
+                ");
+                $stmt->execute([$invitationId]);
+                $invitation = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                if (!$invitation) {
+                    jsonresloc(false, 'Invitation tidak ditemukan atau sudah direspon');
+                }
+                
+                // Validasi kepemilikan invitation
+                $isForCurrentUser = false;
+                if ($invitation['athlete_id'] == $_SESSION['user_id']) {
+                    $isForCurrentUser = true;
+                } elseif ($invitation['athlete_id'] === null && $invitation['athlete_username'] == $_SESSION['username']) {
+                    $isForCurrentUser = true;
+                }
+                
+                if (!$isForCurrentUser) {
+                    jsonresloc(false, 'Anda tidak memiliki akses untuk merespon invitation ini');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Update invitation status
+                    $stmt = $pdo->prepare("
+                        UPDATE coach_athlete_invitations 
+                        SET status = ?, athlete_id = ?, responded_at = NOW() 
+                        WHERE id = ?
+                    ");
+                    $stmt->execute([$response, $_SESSION['user_id'], $invitationId]);
+                    
+                    if ($response === 'accepted') {
+                        // Gunakan INSERT ... ON DUPLICATE KEY UPDATE untuk handle duplikasi
+                        $stmt = $pdo->prepare("
+                            INSERT INTO athlete_profiles 
+                            (user_id, coach_id, sport, is_active, created_at) 
+                            VALUES (?, ?, 'General', 1, NOW())
+                            ON DUPLICATE KEY UPDATE 
+                            is_active = 1, updated_at = NOW()
+                        ");
+                        $stmt->execute([$_SESSION['user_id'], $invitation['coach_id']]);
+                        
+                        error_log("Profile ensured for user: " . $_SESSION['user_id'] . ", coach: " . $invitation['coach_id']);
+                    }
+                    
+                    $pdo->commit();
+                    
+                    $message = $response === 'accepted' ? 'Invitation berhasil diterima' : 'Invitation berhasil ditolak';
+                    jsonresloc(true, $message);
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    error_log("Error responding to invitation: " . $e->getMessage());
+                    jsonresloc(false, 'Gagal merespon invitation: ' . $e->getMessage());
+                }
+                break;
+
+            // ===== TRAINING RESULTS ACTIONS =====
+            case 'get_my_training_results':
+                $period = sanitizeinputloc($_POST['period'] ?? 30, 'int');
+                
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        tr.*, 
+                        ts.title as session_title,
+                        ts.type as session_type,
+                        ts.schedule_date,
+                        u.full_name as coach_name
+                    FROM training_results tr
+                    JOIN training_schedule ts ON tr.training_schedule_id = ts.id
+                    JOIN users u ON tr.coach_id = u.id
+                    WHERE tr.athlete_id = ? 
+                    AND tr.completed_at >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+                    ORDER BY tr.completed_at DESC
+                ");
+                $stmt->execute([$_SESSION['user_id'], $period]);
+                $results = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                
+                jsonresloc(true, 'Training results retrieved', $results);
+                break;
+
+            case 'get_my_training_stats':
+                $stmt = $pdo->prepare("
+                    SELECT 
+                        COUNT(*) as total_sessions,
+                        AVG(performance_score) as avg_performance,
+                        MAX(performance_score) as best_performance,
+                        SUM(distance_covered) as total_distance,
+                        SUM(calories_burned) as total_calories,
+                        COUNT(CASE WHEN completed_at >= DATE_SUB(CURDATE(), INTERVAL 7 DAY) THEN 1 END) as recent_sessions
+                    FROM training_results 
+                    WHERE athlete_id = ?
+                ");
+                $stmt->execute([$_SESSION['user_id']]);
+                $stats = $stmt->fetch(PDO::FETCH_ASSOC);
+                
+                jsonresloc(true, 'Training stats retrieved', $stats);
+                break;
+
             default:
                 jsonresloc(false, 'Unknown action');
         }
@@ -482,6 +747,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         jsonresloc(false, 'An error occurred: ' . $e->getMessage());
     }
 }
+
 ?>
 
 <!DOCTYPE html>
@@ -1197,6 +1463,203 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 grid-template-columns: 1fr;
             }
         }
+
+        /* Invitation Cards Styling */
+        .invitation-card {
+            background: var(--surface-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            transition: all var(--transition-base);
+            position: relative;
+        }
+
+        .invitation-card:hover {
+            background: var(--elevated-bg);
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .invitation-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 1rem;
+        }
+
+        .coach-info {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+        }
+
+        .coach-avatar {
+            width: 50px;
+            height: 50px;
+            background: var(--accent-success);
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: white;
+        }
+
+        .coach-details h3 {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .coach-details p {
+            font-size: 0.85rem;
+            color: var(--text-tertiary);
+        }
+
+        .invitation-status {
+            padding: 0.25rem 0.75rem;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-pending {
+            background: rgba(245, 158, 11, 0.15);
+            color: var(--accent-warning);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+        }
+
+        .status-accepted {
+            background: rgba(16, 185, 129, 0.15);
+            color: var(--accent-success);
+            border: 1px solid rgba(16, 185, 129, 0.3);
+        }
+
+        .status-rejected {
+            background: rgba(239, 68, 68, 0.15);
+            color: var(--accent-danger);
+            border: 1px solid rgba(239, 68, 68, 0.3);
+        }
+
+        .invitation-message {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin: 1rem 0;
+            font-style: italic;
+            color: var(--text-secondary);
+        }
+
+        .invitation-actions {
+            display: flex;
+            gap: 0.75rem;
+            margin-top: 1rem;
+            flex-wrap: wrap;
+        }
+
+        /* Training Results Cards */
+        .result-card {
+            background: var(--surface-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            margin: 1rem 0;
+            transition: all var(--transition-base);
+        }
+
+        .result-card:hover {
+            background: var(--elevated-bg);
+            border-color: var(--accent-primary);
+            transform: translateY(-2px);
+            box-shadow: var(--shadow-lg);
+        }
+
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 1rem;
+            padding-bottom: 1rem;
+            border-bottom: 1px solid var(--glass-border);
+        }
+
+        .result-score {
+            font-size: 2rem;
+            font-weight: 700;
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            color: white;
+        }
+
+        .score-excellent {
+            background: var(--accent-success);
+        }
+
+        .score-good {
+            background: var(--accent-primary);
+        }
+
+        .score-average {
+            background: var(--accent-warning);
+        }
+
+        .score-poor {
+            background: var(--accent-danger);
+        }
+
+        .result-metrics {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+            gap: 1rem;
+            margin: 1rem 0;
+        }
+
+        .metric-item {
+            text-align: center;
+            padding: 0.75rem;
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+        }
+
+        .metric-value {
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--accent-primary);
+            margin-bottom: 0.25rem;
+        }
+
+        .metric-label {
+            font-size: 0.75rem;
+            color: var(--text-tertiary);
+            text-transform: uppercase;
+        }
+
+        .feedback-section {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+        }
+
+        .feedback-title {
+            font-size: 0.9rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin-bottom: 0.5rem;
+        }
+
+        .feedback-content {
+            color: var(--text-tertiary);
+            line-height: 1.6;
+        }
     </style>
 </head>
 <body>
@@ -1262,6 +1725,18 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     <div class="nav-link" onclick="switchSection('achievements')" data-section="achievements">
                         <span class="nav-icon">🏆</span>
                         Achievements
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <div class="nav-link" onclick="switchSection('invitations')" data-section="invitations">
+                        <span class="nav-icon">📧</span>
+                        Coach Invitations
+                    </div>
+                </li>
+                <li class="nav-item">
+                    <div class="nav-link" onclick="switchSection('training-results')" data-section="training-results">
+                        <span class="nav-icon">📊</span>
+                        Training Results
                     </div>
                 </li>
             </ul>
@@ -1409,6 +1884,45 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     </div>
                     
                     <div id="achievementsContainer">
+                        <div class="loading" style="margin: 2rem auto; display: block;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Coach Invitations Section -->
+            <section class="content-section" id="invitations-section">
+                <div class="content-card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <span class="card-icon">📧</span>
+                            Coach Invitations
+                        </h2>
+                    </div>
+                    
+                    <div id="invitationsContainer">
+                        <div class="loading" style="margin: 2rem auto; display: block;"></div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Training Results Section -->
+            <section class="content-section" id="training-results-section">
+                <div class="content-card">
+                    <div class="card-header">
+                        <h2 class="card-title">
+                            <span class="card-icon">📊</span>
+                            My Training Results
+                        </h2>
+                        <div style="display: flex; gap: 1rem; align-items: center;">
+                            <select class="form-select" style="width: 150px;" id="results-period" onchange="loadTrainingResults(this.value)">
+                                <option value="7">Last 7 Days</option>
+                                <option value="30" selected>Last 30 Days</option>
+                                <option value="90">Last 3 Months</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div id="trainingResultsContainer">
                         <div class="loading" style="margin: 2rem auto; display: block;"></div>
                     </div>
                 </div>
@@ -1594,7 +2108,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 training: 'Training Schedule',
                 workouts: 'Workout Logs',
                 nutrition: 'Nutrition Logs',
-                achievements: 'Achievements'
+                achievements: 'Achievements',
+                invitations: 'Coach Invitations',
+                'training-results': 'Training Results'
             };
             
             document.getElementById('pageTitle').textContent = titles[sectionId];
@@ -1627,6 +2143,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     break;
                 case 'achievements':
                     await this.loadAchievementsData();
+                    break;
+                case 'invitations':
+                    await this.loadInvitations();
+                    break;
+                case 'training-results':
+                    await this.loadTrainingResults();
                     break;
             }
         }
@@ -2644,6 +3166,228 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 this.loadAchievementsData();
             }
         }
+
+
+        // ===== COACH INVITATIONS FUNCTIONS =====
+        async loadInvitations() {
+            try {
+                const result = await this.makeRequest('get_coach_invitations');
+                if (result.success) {
+                    this.renderInvitationsContainer(result.data || []);
+                }
+            } catch (error) {
+                this.showMessage('Failed to load invitations', 'error');
+            }
+        }
+
+        renderInvitationsContainer(invitations) {
+            const container = document.getElementById('invitationsContainer');
+            container.innerHTML = '';
+            
+            if (invitations.length === 0) {
+                container.innerHTML = `
+                    <div class="item-card empty-state">
+                        <h3>No invitations found</h3>
+                        <p>When coaches invite you to join their program, invitations will appear here.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            invitations.forEach(invitation => {
+                const invitationCard = this.createInvitationCard(invitation);
+                container.appendChild(invitationCard);
+            });
+        }
+
+        createInvitationCard(invitation) {
+            const card = document.createElement('div');
+            card.className = 'invitation-card';
+            
+            const coachInitials = this.getInitials(invitation.coach_name || invitation.coach_username);
+            const statusClass = `status-${invitation.status}`;
+            const createdDate = new Date(invitation.created_at).toLocaleDateString();
+            
+            card.innerHTML = `
+                <div class="invitation-header">
+                    <div class="coach-info">
+                        <div class="coach-avatar">${coachInitials}</div>
+                        <div class="coach-details">
+                            <h3>${invitation.coach_name || 'Coach'}</h3>
+                            <p>@${invitation.coach_username} • Invited on ${createdDate}</p>
+                        </div>
+                    </div>
+                    <span class="invitation-status ${statusClass}">${invitation.status}</span>
+                </div>
+                
+                ${invitation.message ? `
+                    <div class="invitation-message">
+                        "${invitation.message}"
+                    </div>
+                ` : ''}
+                
+                ${invitation.status === 'pending' ? `
+                    <div class="invitation-actions">
+                        <button class="btn btn-success" onclick="dashboard.respondToInvitation(${invitation.id}, 'accepted')">
+                            <span>✅</span> Accept
+                        </button>
+                        <button class="btn btn-danger" onclick="dashboard.respondToInvitation(${invitation.id}, 'rejected')">
+                            <span>❌</span> Reject
+                        </button>
+                    </div>
+                ` : invitation.responded_at ? `
+                    <p style="color: var(--text-tertiary); font-size: 0.9rem; margin-top: 1rem;">
+                        Responded on ${new Date(invitation.responded_at).toLocaleDateString()}
+                    </p>
+                ` : ''}
+            `;
+            
+            return card;
+        }
+
+        async respondToInvitation(invitationId, response) {
+            const confirmMessage = response === 'accepted' 
+                ? 'Accept this coaching invitation?' 
+                : 'Reject this coaching invitation?';
+                
+            if (!confirm(confirmMessage)) return;
+            
+            const result = await this.makeRequest('respond_to_invitation', {
+                invitation_id: invitationId,
+                response: response
+            });
+            
+            this.showMessage(result.message, result.success ? 'success' : 'error');
+            
+            if (result.success) {
+                this.loadInvitations();
+                if (response === 'accepted') {
+                    // Refresh dashboard stats as we might have a new coach
+                    this.loadDashboardStats();
+                }
+            }
+        }
+
+        // ===== TRAINING RESULTS FUNCTIONS =====
+        async loadTrainingResults(period = 30) {
+            try {
+                const result = await this.makeRequest('get_my_training_results', { period });
+                if (result.success) {
+                    this.renderTrainingResultsContainer(result.data || []);
+                }
+            } catch (error) {
+                this.showMessage('Failed to load training results', 'error');
+            }
+        }
+
+        renderTrainingResultsContainer(results) {
+            const container = document.getElementById('trainingResultsContainer');
+            container.innerHTML = '';
+            
+            if (results.length === 0) {
+                container.innerHTML = `
+                    <div class="item-card empty-state">
+                        <h3>No training results found</h3>
+                        <p>When your coach adds training results, they will appear here.</p>
+                    </div>
+                `;
+                return;
+            }
+            
+            results.forEach(result => {
+                const resultCard = this.createTrainingResultCard(result);
+                container.appendChild(resultCard);
+            });
+        }
+
+        createTrainingResultCard(result) {
+            const card = document.createElement('div');
+            card.className = 'result-card';
+            
+            const scoreClass = this.getScoreClass(result.performance_score);
+            const completedDate = new Date(result.completed_at).toLocaleDateString();
+            
+            card.innerHTML = `
+                <div class="result-header">
+                    <div>
+                        <h3 style="font-size: 1.1rem; font-weight: 600; color: var(--text-primary); margin-bottom: 0.25rem;">
+                            ${result.session_title}
+                        </h3>
+                        <p style="color: var(--text-tertiary); font-size: 0.9rem;">
+                            ${result.session_type} • Coach: ${result.coach_name} • ${completedDate}
+                        </p>
+                    </div>
+                    <div class="result-score ${scoreClass}">
+                        ${result.performance_score}%
+                    </div>
+                </div>
+                
+                <div class="result-metrics">
+                    ${result.duration_minutes ? `
+                        <div class="metric-item">
+                            <div class="metric-value">${result.duration_minutes}</div>
+                            <div class="metric-label">Minutes</div>
+                        </div>
+                    ` : ''}
+                    
+                    ${result.distance_covered ? `
+                        <div class="metric-item">
+                            <div class="metric-value">${result.distance_covered}</div>
+                            <div class="metric-label">Distance (km)</div>
+                        </div>
+                    ` : ''}
+                    
+                    ${result.calories_burned ? `
+                        <div class="metric-item">
+                            <div class="metric-value">${result.calories_burned}</div>
+                            <div class="metric-label">Calories</div>
+                        </div>
+                    ` : ''}
+                    
+                    ${result.heart_rate_avg ? `
+                        <div class="metric-item">
+                            <div class="metric-value">${result.heart_rate_avg}</div>
+                            <div class="metric-label">Avg HR (bpm)</div>
+                        </div>
+                    ` : ''}
+                    
+                    ${result.heart_rate_max ? `
+                        <div class="metric-item">
+                            <div class="metric-value">${result.heart_rate_max}</div>
+                            <div class="metric-label">Max HR (bpm)</div>
+                        </div>
+                    ` : ''}
+                </div>
+                
+                ${result.notes ? `
+                    <div class="feedback-section">
+                        <div class="feedback-title">Coach Notes:</div>
+                        <div class="feedback-content">${result.notes}</div>
+                    </div>
+                ` : ''}
+                
+                ${result.feedback ? `
+                    <div class="feedback-section">
+                        <div class="feedback-title">Coach Feedback:</div>
+                        <div class="feedback-content">${result.feedback}</div>
+                    </div>
+                ` : ''}
+            `;
+            
+            return card;
+        }
+
+        getScoreClass(score) {
+            if (score >= 85) return 'score-excellent';
+            if (score >= 70) return 'score-good';
+            if (score >= 55) return 'score-average';
+            return 'score-poor';
+        }
+
+        getInitials(name) {
+            if (!name) return '?';
+            return name.split(' ').map(n => n[0]).join('').toUpperCase().substr(0, 2);
+        }
     }
 
     // Global Functions
@@ -2653,6 +3397,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (confirm('Are you sure you want to logout?')) {
             window.location.href = '?logout=1';
         }
+    }
+
+    function loadTrainingResults(period) {
+        dashboard.loadTrainingResults(period);
     }
 
     // Legacy function wrappers for backward compatibility
