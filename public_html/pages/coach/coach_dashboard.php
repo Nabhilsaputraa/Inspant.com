@@ -473,7 +473,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             // ===== ATHLETE MANAGEMENT =====
             case 'get_my_athletes':
                 $stmt = $pdo->prepare("
-                    SELECT 
+                    SELECT DISTINCT
                         u.id, 
                         u.full_name, 
                         u.username, 
@@ -481,27 +481,40 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                         ap.sport, 
                         ap.position, 
                         ap.team_name,
-                        COUNT(DISTINCT ts.id) AS total_sessions,
-                        SUM(CASE WHEN ts.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions,
-                        ROUND(AVG(tr.performance_score), 2) AS avg_performance
+                        COALESCE(session_stats.total_sessions, 0) AS total_sessions,
+                        COALESCE(session_stats.completed_sessions, 0) AS completed_sessions,
+                        COALESCE(perf_stats.avg_performance, 0) AS avg_performance
                     FROM users u
-                    JOIN athlete_profiles ap 
-                        ON u.id = ap.user_id
-                    JOIN training_participants tp 
-                        ON tp.athlete_id = u.id
-                    JOIN training_schedule ts 
-                        ON ts.id = tp.training_schedule_id
-                    LEFT JOIN training_results tr 
-                        ON tr.athlete_id = u.id 
-                    AND tr.training_schedule_id = ts.id
-                    WHERE ts.coach_id = ? 
-                    AND ap.is_active = 1
-                    GROUP BY u.id, u.full_name, u.username, u.email, ap.sport, ap.position, ap.team_name
+                    JOIN athlete_profiles ap ON u.id = ap.user_id
+                    LEFT JOIN (
+                        SELECT 
+                            tp.athlete_id,
+                            COUNT(ts.id) AS total_sessions,
+                            SUM(CASE WHEN ts.status = 'completed' THEN 1 ELSE 0 END) AS completed_sessions
+                        FROM training_participants tp
+                        JOIN training_schedule ts ON tp.training_schedule_id = ts.id
+                        WHERE ts.coach_id = ?
+                        GROUP BY tp.athlete_id
+                    ) session_stats ON session_stats.athlete_id = u.id
+                    LEFT JOIN (
+                        SELECT 
+                            athlete_id,
+                            AVG(CASE 
+                                WHEN performance_rating = 'excellent' THEN 90
+                                WHEN performance_rating = 'good' THEN 75
+                                WHEN performance_rating = 'average' THEN 60
+                                WHEN performance_rating = 'needs_improvement' THEN 40
+                                ELSE COALESCE(performance_score, 0)
+                            END) AS avg_performance
+                        FROM training_results 
+                        WHERE coach_id = ?
+                        GROUP BY athlete_id
+                    ) perf_stats ON perf_stats.athlete_id = u.id
+                    WHERE ap.coach_id = ? AND ap.is_active = 1
                     ORDER BY u.full_name ASC
                 ");
-                $stmt->execute([$coachId]);
+                $stmt->execute([$coachId, $coachId, $coachId]);
                 $athletes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-
                 jsresloc(true, 'Athletes retrieved', $athletes);
                 break;
 
@@ -662,6 +675,83 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 $stmt->execute([$templateId]);
                 $fields = $stmt->fetchAll(PDO::FETCH_ASSOC);
                 jsresloc(true, 'Fields retrieved', $fields);
+                break;
+
+            case 'add_training_schedule_multi':
+                $athleteIds = json_decode($_POST['athlete_ids'] ?? '[]', true);
+                $title = sanitizeloc($_POST['title'] ?? '');
+                $type = sanitizeloc($_POST['type'] ?? 'technical');
+                $scheduleDate = sanitizeloc($_POST['schedule_date'] ?? '', 'date');
+                $startTime = sanitizeloc($_POST['start_time'] ?? '');
+                $duration = sanitizeloc($_POST['duration'] ?? 60, 'int');
+                $location = sanitizeloc($_POST['location'] ?? '');
+                $description = sanitizeloc($_POST['description'] ?? '');
+                $intensity = sanitizeloc($_POST['intensity'] ?? 'moderate');
+                $maxParticipants = sanitizeloc($_POST['max_participants'] ?? 0, 'int');
+                
+                if (empty($athleteIds) || !$title || !$scheduleDate || !$startTime) {
+                    jsresloc(false, 'Required fields are missing');
+                }
+                
+                try {
+                    $pdo->beginTransaction();
+                    
+                    // Calculate end time
+                    $startDateTime = DateTime::createFromFormat('H:i', $startTime);
+                    if ($startDateTime) {
+                        $endDateTime = clone $startDateTime;
+                        $endDateTime->add(new DateInterval('PT' . $duration . 'M'));
+                        $endTime = $endDateTime->format('H:i:s');
+                    } else {
+                        $endTime = $startTime;
+                    }
+                    
+                    // Create training schedule
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_schedule 
+                        (coach_id, title, type, description, schedule_date, start_time, end_time,
+                        duration, location, intensity, max_participants, status) 
+                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')
+                    ");
+                    
+                    $result = $stmt->execute([
+                        $coachId, $title, $type, $description, 
+                        $scheduleDate, $startTime, $endTime, $duration, 
+                        $location, $intensity, $maxParticipants
+                    ]);
+                    
+                    if (!$result) {
+                        throw new Exception('Failed to create training schedule');
+                    }
+                    
+                    $scheduleId = $pdo->lastInsertId();
+                    
+                    // Add participants
+                    $stmt = $pdo->prepare("
+                        INSERT INTO training_participants (training_schedule_id, athlete_id, status) 
+                        VALUES (?, ?, 'registered')
+                    ");
+                    
+                    foreach ($athleteIds as $athleteId) {
+                        // Verify coach has access to this athlete
+                        $verifyStmt = $pdo->prepare("
+                            SELECT id FROM athlete_profiles 
+                            WHERE user_id = ? AND coach_id = ? AND is_active = 1
+                        ");
+                        $verifyStmt->execute([$athleteId, $coachId]);
+                        
+                        if ($verifyStmt->fetch()) {
+                            $stmt->execute([$scheduleId, $athleteId]);
+                        }
+                    }
+                    
+                    $pdo->commit();
+                    jsresloc(true, 'Training scheduled successfully for ' . count($athleteIds) . ' athletes');
+                    
+                } catch (Exception $e) {
+                    $pdo->rollback();
+                    jsresloc(false, 'Failed to schedule training: ' . $e->getMessage());
+                }
                 break;
 
             case 'add_training_result_with_template':
@@ -881,87 +971,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
                 break;
 
-            case 'add_training_schedule_multi':
-                $athleteIds = json_decode($_POST['athlete_ids'] ?? '[]', true);
-                $title = sanitizeloc($_POST['title'] ?? '');
-                $type = sanitizeloc($_POST['type'] ?? 'technical');
-                $scheduleDate = sanitizeloc($_POST['schedule_date'] ?? '', 'date');
-                $startTime = sanitizeloc($_POST['start_time'] ?? '');
-                $duration = sanitizeloc($_POST['duration'] ?? 60, 'int');
-                $location = sanitizeloc($_POST['location'] ?? '');
-                $description = sanitizeloc($_POST['description'] ?? '');
-                $intensity = sanitizeloc($_POST['intensity'] ?? 'moderate');
-                $maxParticipants = sanitizeloc($_POST['max_participants'] ?? count($athleteIds), 'int');
-                
-                if (empty($athleteIds) || !$title || !$scheduleDate || !$startTime) {
-                    jsresloc(false, 'Required fields are missing or no athletes selected');
-                }
-                
-                // Verify coach has access to all selected athletes
-                $placeholders = str_repeat('?,', count($athleteIds) - 1) . '?';
-                $params = array_merge($athleteIds, [$coachId]);
-                
-                $stmt = $pdo->prepare("
-                    SELECT COUNT(*) FROM athlete_profiles 
-                    WHERE user_id IN ($placeholders) AND coach_id = ? AND is_active = 1
-                ");
-                $stmt->execute($params);
-                $accessibleCount = $stmt->fetchColumn();
-                
-                if ($accessibleCount != count($athleteIds)) {
-                    jsresloc(false, 'You do not have access to some selected athletes');
-                }
-                
-                try {
-                    $pdo->beginTransaction();
-                    
-                    // Calculate end time
-                    $startDateTime = DateTime::createFromFormat('H:i', $startTime);
-                    $endDateTime = clone $startDateTime;
-                    $endDateTime->add(new DateInterval('PT' . $duration . 'M'));
-                    $endTime = $endDateTime->format('H:i:s');
-                    
-                    // Insert training schedule (without user_id)
-                    $stmt = $pdo->prepare("
-                        INSERT INTO training_schedule 
-                        (coach_id, title, type, description, schedule_date, start_time, end_time,
-                        duration, location, intensity, max_participants, status) 
-                        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'scheduled')
-                    ");
-                    
-                    $result = $stmt->execute([
-                        $coachId, $title, $type, $description, 
-                        $scheduleDate, $startTime, $endTime, $duration, 
-                        $location, $intensity, $maxParticipants
-                    ]);
-                    
-                    if (!$result) {
-                        throw new Exception('Failed to create training schedule');
-                    }
-                    
-                    $scheduleId = $pdo->lastInsertId();
-                    
-                    // Add participants
-                    $stmt = $pdo->prepare("
-                        INSERT INTO training_participants (training_schedule_id, athlete_id, status) 
-                        VALUES (?, ?, 'registered')
-                    ");
-                    
-                    foreach ($athleteIds as $athleteId) {
-                        $stmt->execute([$scheduleId, $athleteId]);
-                    }
-                    
-                    $pdo->commit();
-                    jsresloc(true, 'Training scheduled successfully for ' . count($athleteIds) . ' athletes');
-                    
-                } catch (Exception $e) {
-                    $pdo->rollback();
-                    jsresloc(false, 'Failed to schedule training: ' . $e->getMessage());
-                }
-                break;
-
             case 'get_training_schedules':
-                // Redirect to multi version for consistency
+            case 'get_training_schedules_multi':
                 $stmt = $pdo->prepare("
                     SELECT 
                         ts.*,
@@ -977,9 +988,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 ");
                 $stmt->execute([$coachId]);
                 $schedules = $stmt->fetchAll(PDO::FETCH_ASSOC);
-                
                 jsresloc(true, 'Schedules retrieved', $schedules);
                 break;
+                
 
             case 'add_training_result_simple':
                 $scheduleId = sanitizeloc($_POST['schedule_id'] ?? 0, 'int');
@@ -2250,7 +2261,7 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
                 loadSchedulesMulti(); // Gunakan multi version
                 break;
             case 'results':
-                loadResultsSimple(); // Gunakan simple version
+                loadResults(); // Gunakan simple version
                 break;
             case 'analytics':
                 loadAnalytics();
@@ -2268,13 +2279,16 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         formData.append('csrf_token', csrfToken);
         
         for (let key in data) {
-            formData.append(key, data[key]);
+            if (data[key] !== null && data[key] !== undefined) {
+                formData.append(key, data[key]);
+            }
         }
         
         try {
-            // Add timeout to prevent hanging requests
+            console.log('Making request with action:', action, 'data:', data);
+            
             const controller = new AbortController();
-            const timeoutId = setTimeout(() => controller.abort(), 15000); // 15 second timeout
+            const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 detik
             
             const response = await fetch(window.location.href, {
                 method: 'POST',
@@ -2289,6 +2303,7 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             }
             
             const result = await response.json();
+            console.log('Response received:', result);
             return result;
             
         } catch (error) {
@@ -3216,6 +3231,15 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         `;
     }
 
+    async function syncAthleteProfiles() {
+        const result = await makeRequest('sync_athletes');
+        showNotification(result.message, result.success ? 'success' : 'error');
+        
+        if (result.success) {
+            loadAthletes(); // Refresh athlete list
+        }
+    }
+
     async function loadTemplateFields(templateId) {
         if (!templateId) {
             document.getElementById('custom-fields-container').innerHTML = '';
@@ -3627,8 +3651,12 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         
         // Get selected athletes
         const selectedAthletes = [];
-        const checkboxes = document.querySelectorAll('#athlete-selection input[type="checkbox"]:checked');
-        checkboxes.forEach(cb => selectedAthletes.push(cb.value));
+        const checkboxes = document.querySelectorAll('#athlete-checkboxes input[type="checkbox"]:checked');
+        checkboxes.forEach(cb => {
+            if (cb.value) { // Pastikan value tidak kosong
+                selectedAthletes.push(cb.value);
+            }
+        });
         
         const title = document.getElementById('schedule-title').value;
         const scheduleDate = document.getElementById('schedule-date').value;
@@ -3639,16 +3667,19 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
             showNotification('Please select at least one athlete', 'error');
             return;
         }
+        
         if (!title || title.trim() === '') {
             showNotification('Session title is required', 'error');
             document.getElementById('schedule-title').focus();
             return;
         }
+        
         if (!scheduleDate) {
             showNotification('Date is required', 'error');
             document.getElementById('schedule-date').focus();
             return;
         }
+        
         if (!startTime) {
             showNotification('Start time is required', 'error');
             document.getElementById('schedule-time').focus();
@@ -3675,12 +3706,18 @@ function updateAthleteMetrics($pdo, $athleteId, $performanceScore) {
         if (result.success) {
             closeModal('scheduleModal');
             document.getElementById('scheduleForm').reset();
-            document.querySelectorAll('#athlete-selection input[type="checkbox"]').forEach(cb => cb.checked = false);
+            document.querySelectorAll('#athlete-checkboxes input[type="checkbox"]').forEach(cb => cb.checked = false);
+            const selectAllBox = document.getElementById('select-all-athletes');
+            if (selectAllBox) {
+                selectAllBox.checked = false;
+                selectAllBox.indeterminate = false;
+            }
             if (currentSection === 'schedule') {
                 loadSchedulesMulti();
             }
         }
     }
+
 
     async function handleBulkResultSubmit(e) {
         e.preventDefault();
